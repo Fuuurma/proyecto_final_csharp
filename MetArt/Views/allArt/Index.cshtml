@@ -1,0 +1,34 @@
+@model List<MyArtPage.allArt.ArtPiece>
+
+
+
+@{
+    ViewData["Title"] = "All Art";
+} 
+
+<p class="h1 tex-dark text-center mt-5 mb-2">10 Famous Art Pieces from the Museum</p>
+
+<div class="row justify-content-center">
+@foreach (var artPiece in Model)
+{
+    
+        
+    <div class="col-5">
+    <div class="card m-3 shadow-lg border-dark">
+        <img src="@artPiece.PrimaryImage" class="card-img-top border border-dark border-5" alt="Photo of @artPiece.Title" style="height: 300px;">
+        <div class="card-body">
+            <p class="card-title h3 text-dark text-center">@artPiece.Title</p>
+            <p class="card-subtitle text-danger text-center">@artPiece.Department</p>
+            <p class="card-text text-danger fw-bold"> Culture: <span class="text-dark"> @artPiece.Culture </span></p>
+            <p class="card-text text-danger fw-bold">  Period:<span class="text-dark">  @artPiece.Period  </span></p>
+            <p class="card-text text-danger fw-bold">  Artist:<span class="text-dark">  @artPiece.Artist   </span></p>
+            <p class="card-text text-danger fw-bold">  Date:  <span class="text-dark">@artPiece.Date    </span></p>
+             <div class="d-flex justify-content-center">
+                <a href="@artPiece.Link" class="btn btn-light border-dark border-4 fw-bold text-decoration-underline" target="_blank">  See <span class="text-danger">Art</span> </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+}
+</div>

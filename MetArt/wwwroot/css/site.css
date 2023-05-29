@@ -1,0 +1,58 @@
+html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+}
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+
+body {
+  margin-bottom: 60px;
+}
+
+#title{
+  font-size: 70px;
+  color: #1b6ec2;
+}
+
+#titlecarousel{
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 80px;
+  justify-content: end;
+  text-align: end;
+
+}
+
+
+#titlecarousel_{
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 80px;
+}
+
+#titlecarousel_card{
+  font-family: 'Cormorant Garamond', serif;
+  justify-content: end;
+}
+#titlecarousel_card_{
+  font-family: 'Cormorant Garamond', serif;
+}
+
+#just_end{
+  justify-content: end;
+}
+#just_start{
+  justify-content: start;
+}

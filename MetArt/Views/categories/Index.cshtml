@@ -1,0 +1,40 @@
+@model List<MyArtPage.Categories.ArtCategory>
+
+
+@{
+    ViewData["Title"] = "Collections";
+}
+
+<h1 class="text-center m-5">@ViewData["Title"]</h1>
+
+<div class="row justify-content-center">
+    @{
+    int count = 1; // Initialize counter variable
+}
+
+@foreach (var artCategory in Model)
+{
+    <div class="col-5 col-md-3">
+        <p class="text-dark h5 text-center mt-3">#<span class="text-danger">@(count++)</span> @artCategory.Department </p>
+    <div class="card m-3 shadow-lg border-dark">
+        <img src="@artCategory.PrimaryImage" class="card-img-top border border-dark border-5" alt="Photo of @artCategory.Title" style="height: 300px;">
+        <div class="card-body">
+            <p class="card-title h5 text-dark text-center">@artCategory.Title</p>
+            <p class="card-text text-danger fw-bold"> Culture: <span class="text-dark"> @artCategory.Culture </span></p>
+            <p class="card-text text-danger fw-bold">  Period:<span class="text-dark">  @artCategory.Period  </span></p>
+            <p class="card-text text-danger fw-bold">  Artist:<span class="text-dark">  @artCategory.Artist   </span></p>
+            <p class="card-text text-danger fw-bold">  Date:  <span class="text-dark">@artCategory.Date    </span></p>
+             <div class="d-flex justify-content-center">
+                <a href="@artCategory.Link" class="btn btn-light border-dark border-4 fw-bold text-decoration-underline" target="_blank">  See <span class="text-danger">Art</span> </a>
+            </div>
+        </div>
+    </div>
+</div>
+}
+
+</div>
+
+
+                             
+                            
+                            
