@@ -1,0 +1,26 @@
+# Node / TanStack rebuild
+node_modules/
+.output/
+.tanstack/
+dist/
+coverage/
+playwright-report/
+test-results/
+.wrangler/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Legacy .NET generated output
+**/bin/
+**/obj/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.user
+*.suo
