@@ -1,5 +1,31 @@
 # Meet the Met — Agent Instructions
 
+<!-- fuurma-hub-start -->
+## Fuurma Hub Context
+
+This repo is one project inside the Fuurma portfolio workspace. The planner hub
+is the source of truth for cross-project priorities, reusable stack decisions,
+ports, deploy/auth notes, and agent handoffs.
+
+Before meaningful work, read:
+1. Kanban status: `~/Projects/hub/BOARD.md`
+2. Current sprint / next work: `~/Projects/hub/WORK.md`
+3. This project's state: `~/Projects/hub/projects/meet-the-met.md`
+4. Standard stack playbook: `~/Projects/hub/tech-stack/STACK-STANDARDS.md`
+5. Agent skills/context: `~/Projects/hub/tech-stack/AGENT-CONTEXT.md`
+6. Design arsenal: `~/Projects/hub/design/README.md` + `~/Projects/hub/design/APPLY.md`
+
+Fleet findings for this repo land in `~/Projects/hub/research/{devin,needs-work,grok}/`
+and are appended to `~/Projects/hub/research/FEED.md`. Check FEED.md before starting
+work to see if a critic already found something relevant.
+
+Operational rules:
+- Run `git status --short --branch` before editing and protect dirty user/agent work.
+- Product repo code/tests are the immediate truth; when they disagree with the hub, update the hub after verifying.
+- After reading the hub pointers, keep reading this file's repo-local instructions; they are the authority for this codebase.
+- When you learn a reusable pattern, fix, or project-state change, update `~/Projects/hub` so the next agent starts stronger.
+<!-- fuurma-hub-end -->
+
 This repository is the rebuild of Sergi's 2023 ASP.NET Core class project into
 an independent Open Access collection explorer and a furma.design case study.
 
@@ -11,7 +37,8 @@ Use this order when instructions disagree:
 2. This file.
 3. `DESIGN.md` for visual and interaction decisions.
 4. `docs/REBUILD-PLAN.md` for migration scope and sequencing.
-5. The hub standards in `~/Projects/hub/tech-stack/`.
+5. The hub standards in `~/Projects/hub/tech-stack/` and the design
+   arsenal in `~/Projects/hub/design/` (`APPLY.md` when touching UI).
 6. Current official framework and provider documentation.
 7. Model memory.
 
