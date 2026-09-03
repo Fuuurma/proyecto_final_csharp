@@ -68,8 +68,10 @@ distinctive italic and numeral forms.
 - One featured object, not an autoplay slideshow.
 - Product premise visible without scrolling.
 - One primary action: explore the collection.
-- Three curated paths represented by real objects and honest descriptions.
-- A small provenance cue connects the 2023 origin to the current rebuild.
+- Four curated paths represented by real objects and honest descriptions.
+- Department entry points widen the room without pretending to be a complete
+  museum taxonomy.
+- A small source cue keeps the Open Access collection visible in the journey.
 
 ### Explore
 
@@ -87,6 +89,7 @@ distinctive italic and numeral forms.
   and rights without pretending all fields exist.
 - Link clearly to the canonical Met record.
 - Related navigation follows real metadata, not invented recommendations.
+- Previous and next movement stays bounded to the committed review set.
 
 ### Selection
 

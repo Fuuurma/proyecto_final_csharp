@@ -1,3 +1,4 @@
+import { curatedArtworks } from "@/data/curated-artworks";
 import type { MetDepartment } from "@/data/departments";
 import { CACHE_TTL_MS, getCached, setCached } from "./cache";
 import { type Artwork, normalizeMetObject } from "./normalize";
@@ -114,8 +115,15 @@ export async function fetchMetObject(
   }
 
   const artwork = normalizeMetObject(parsed.data);
-  if (useCache) setCached(url, artwork, CACHE_TTL_MS.object);
-  return artwork;
+  // Curated titles win over the Met's raw titles for live-fetched objects
+  // too (c53e8ba removed the normalizer's magic-ID special case; without
+  // this overlay, live searches showing 56353 lost "The Great Wave").
+  const curated = curatedArtworks.find((a) => a.id === artwork.id);
+  const withCuratedTitle = curated?.displayTitle
+    ? { ...artwork, displayTitle: curated.displayTitle }
+    : artwork;
+  if (useCache) setCached(url, withCuratedTitle, CACHE_TTL_MS.object);
+  return withCuratedTitle;
 }
 
 export async function fetchMetDepartments(

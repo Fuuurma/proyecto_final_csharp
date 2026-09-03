@@ -141,4 +141,24 @@ describe("Met API adapter", () => {
     // used on the production path where the global fetch is in play.
     expect(objectCalls).toBe(2);
   });
+
+  it("applies curated display titles to live-fetched curated objects", async () => {
+    // 56353 is curated as "The Great Wave"; the live Met title is raw.
+    const rawFetcher: typeof fetch = async () =>
+      response({
+        ...objectPayload(56353),
+        title: "Under the Wave off Kanagawa",
+      });
+
+    const artwork = await fetchMetObject(56353, { fetcher: rawFetcher });
+    expect(artwork.displayTitle).toBe("The Great Wave");
+  });
+
+  it("leaves non-curated live objects with their Met title", async () => {
+    const rawFetcher: typeof fetch = async () =>
+      response({ ...objectPayload(999999), title: "Some other object" });
+
+    const artwork = await fetchMetObject(999999, { fetcher: rawFetcher });
+    expect(artwork.displayTitle).toBe("Some other object");
+  });
 });
