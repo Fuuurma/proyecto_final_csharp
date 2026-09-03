@@ -14,7 +14,7 @@ export default defineConfig({
   },
   webServer: {
     command: "corepack pnpm run dev",
-    env: { VITE_MET_API_MODE: "fixture" },
+    env: { MET_API_MODE: "fixture" },
     url: "http://127.0.0.1:3180",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

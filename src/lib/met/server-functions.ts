@@ -70,7 +70,11 @@ export type DepartmentIndexResult = {
 const missingDepartmentFilter = "__none__";
 
 function isFixtureMode(): boolean {
-  return import.meta.env.VITE_MET_API_MODE === "fixture";
+  // Non-`VITE_` prefix on purpose: Vite only ships `VITE_*` vars to the
+  // client bundle, so `MET_API_MODE` stays server-only. This module is a
+  // server function (`createServerFn`), so `import.meta.env` here is
+  // Vite's SSR env, which still resolves the full environment.
+  return import.meta.env.MET_API_MODE === "fixture";
 }
 
 function filterCuratedArtworks(query: string, department: string): Artwork[] {

@@ -70,7 +70,7 @@ department chips query The Met for public-domain, image-backed works, hydrate
 one page of 24, and can load up to four pages. The server-only Met adapter in
 `src/lib/met/` uses bounded hydration, timeouts, partial-failure tolerance, and
 normalized records. Browser tests set
-`VITE_MET_API_MODE=fixture` so CI never depends on upstream availability; omit
+`MET_API_MODE=fixture` so CI never depends on upstream availability; omit
 that variable for live local searches.
 
 ## Project documents

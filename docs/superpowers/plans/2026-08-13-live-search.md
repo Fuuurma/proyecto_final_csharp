@@ -6,7 +6,7 @@
 
 **Architecture:** The Met search endpoint returns a full ID list with no offset. Each server call slices one page of 24 IDs and hydrates only that page. The Explore route loader always loads page 1; Load more and shared `?page=n` fill later pages on the client and append. Department chips map to Met department IDs. Fixture mode paginates the curated set and never calls live Met.
 
-**Tech Stack:** TanStack Start server functions, Zod, existing Met adapter, Vitest, Playwright, fixture via `VITE_MET_API_MODE=fixture`.
+**Tech Stack:** TanStack Start server functions, Zod, existing Met adapter, Vitest, Playwright, fixture via `MET_API_MODE=fixture`.
 
 ## Global Constraints
 

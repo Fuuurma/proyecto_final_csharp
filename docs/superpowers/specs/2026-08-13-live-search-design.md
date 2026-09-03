@@ -81,7 +81,7 @@ review works).
 
 ### Fixture / CI
 
-`VITE_MET_API_MODE=fixture` still uses the curated set, never live Met.
+`MET_API_MODE=fixture` still uses the curated set, never live Met.
 Paginate fixture hits the same way (24 per page) so Load more can be tested
 without upstream. Empty query + All works remains the full 33, not paginated.
 
