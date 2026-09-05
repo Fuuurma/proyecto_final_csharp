@@ -36,6 +36,15 @@ import {
   SEARCH_PAGE_SIZE,
 } from "@/lib/met/search-query";
 import { searchCollection } from "@/lib/met/server-functions";
+import {
+  collectPages,
+  type PageCache,
+} from "@/lib/fill-pages";
+
+// Session-scoped memo for tail-fill pages — see fill-pages.ts. One source
+// of truth stays `[...result.artworks, ...extra]`; this only skips
+// network round-trips already paid this session.
+const refillCache: PageCache<Artwork> = new Map();
 
 const exploreSearchSchema = z.object({
   q: z.string().optional(),
@@ -167,21 +176,30 @@ function Explore() {
 
     async function fillRemaining() {
       setIsFilling(true);
-      const collected: Artwork[] = [];
       try {
-        for (let nextPage = 2; nextPage <= page; nextPage += 1) {
-          const next = await searchCollection({
-            data: {
-              q: query,
-              department: activeDepartment,
-              departmentId,
-              page: nextPage,
+        await collectPages(
+          refillCache,
+          [query, activeDepartment, departmentId],
+          2,
+          page,
+          async (nextPage) => {
+            const next = await searchCollection({
+              data: {
+                q: query,
+                department: activeDepartment,
+                departmentId,
+                page: nextPage,
+              },
+            });
+            return next.artworks;
+          },
+          {
+            onChunk: (all) => {
+              if (!cancelled) setExtra([...all]);
             },
-          });
-          if (cancelled) return;
-          collected.push(...next.artworks);
-          setExtra([...collected]);
-        }
+            shouldContinue: () => !cancelled,
+          },
+        );
       } finally {
         if (!cancelled) setIsFilling(false);
       }
