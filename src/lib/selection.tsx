@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useReducer,
   useState,
 } from "react";
 import type { Artwork } from "./met/normalize";
@@ -109,13 +110,79 @@ function readSelection(): SelectionItem[] {
   }
 }
 
+/**
+ * Items and announcement live in ONE reducer state: every action derives
+ * its announcement from the state it is transforming, so the live region
+ * can never describe a selection other than the one just committed
+ * (grok 09-05: stale-closure toggle announced the opposite of what it
+ * did, and a rapid double-toggle left the item stuck in the selection).
+ */
+export type SelectionState = { items: SelectionItem[]; announcement: string };
+
+export type SelectionAction =
+  | { type: "hydrate"; items: SelectionItem[] }
+  | { type: "toggle"; artwork: Artwork }
+  | { type: "remove"; objectId: number }
+  | { type: "move"; objectId: number; direction: -1 | 1 }
+  | { type: "clear" };
+
+export const emptySelectionState: SelectionState = {
+  items: [],
+  announcement: "",
+};
+
+export function selectionReducer(
+  state: SelectionState,
+  action: SelectionAction,
+): SelectionState {
+  switch (action.type) {
+    case "hydrate":
+      return state.items.length > 0
+        ? state
+        : { ...state, items: action.items };
+    case "toggle": {
+      const alreadySaved = state.items.some(
+        (item) => item.id === action.artwork.id,
+      );
+      return {
+        items: alreadySaved
+          ? state.items.filter((item) => item.id !== action.artwork.id)
+          : [selectionItemFromArtwork(action.artwork), ...state.items],
+        announcement: alreadySaved
+          ? `Removed ${action.artwork.displayTitle} from your selection`
+          : `Saved ${action.artwork.displayTitle} to your selection`,
+      };
+    }
+    case "remove": {
+      const removed = state.items.find((item) => item.id === action.objectId);
+      return {
+        items: state.items.filter((item) => item.id !== action.objectId),
+        announcement: removed
+          ? `Removed ${removed.displayTitle} from your selection`
+          : state.announcement,
+      };
+    }
+    case "move":
+      return {
+        ...state,
+        items: moveSelectionItem(
+          state.items,
+          action.objectId,
+          action.direction,
+        ),
+      };
+    case "clear":
+      return { items: [], announcement: "Cleared the local selection" };
+  }
+}
+
 export function SelectionProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<SelectionItem[]>([]);
+  const [state, dispatch] = useReducer(selectionReducer, emptySelectionState);
+  const { items, announcement } = state;
   const [isHydrated, setIsHydrated] = useState(false);
-  const [announcement, setAnnouncement] = useState("");
 
   useEffect(() => {
-    setItems((current) => (current.length > 0 ? current : readSelection()));
+    dispatch({ type: "hydrate", items: readSelection() });
     setIsHydrated(true);
   }, []);
 
@@ -129,41 +196,20 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
     [items],
   );
 
-  const toggle = useCallback(
-    (artwork: Artwork) => {
-      const alreadySaved = items.some((item) => item.id === artwork.id);
-      setAnnouncement(
-        alreadySaved
-          ? `Removed ${artwork.displayTitle} from your selection`
-          : `Saved ${artwork.displayTitle} to your selection`,
-      );
-      setItems((current) =>
-        alreadySaved
-          ? current.filter((item) => item.id !== artwork.id)
-          : [selectionItemFromArtwork(artwork), ...current],
-      );
-    },
-    [items],
-  );
+  const toggle = useCallback((artwork: Artwork) => {
+    dispatch({ type: "toggle", artwork });
+  }, []);
 
-  const remove = useCallback(
-    (objectId: number) => {
-      const removed = items.find((item) => item.id === objectId);
-      if (removed) {
-        setAnnouncement(`Removed ${removed.displayTitle} from your selection`);
-      }
-      setItems((current) => current.filter((item) => item.id !== objectId));
-    },
-    [items],
-  );
+  const remove = useCallback((objectId: number) => {
+    dispatch({ type: "remove", objectId });
+  }, []);
 
   const move = useCallback((objectId: number, direction: -1 | 1) => {
-    setItems((current) => moveSelectionItem(current, objectId, direction));
+    dispatch({ type: "move", objectId, direction });
   }, []);
 
   const clear = useCallback(() => {
-    setItems([]);
-    setAnnouncement("Cleared the local selection");
+    dispatch({ type: "clear" });
   }, []);
 
   const value = useMemo(
