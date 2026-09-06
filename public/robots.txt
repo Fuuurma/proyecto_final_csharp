@@ -1,0 +1,6 @@
+# meet-the-met — a public-domain browsing companion to the Met collection.
+# All routes are crawlable. A sitemap waits on a canonical production
+# domain (the Workers deploy has no custom domain yet — owner decision);
+# per-artwork pages under /art/ are unbounded and intentionally omitted.
+User-agent: *
+Allow: /
