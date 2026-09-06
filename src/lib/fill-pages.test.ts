@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-
-import type { Artwork } from "./met/normalize";
 import {
   cachePages,
   collectPages,
-  pageCacheKey,
+  dedupeById,
   type PageCache,
+  pageCacheKey,
 } from "./fill-pages";
+import type { Artwork } from "./met/normalize";
 
 const artwork = (id: number): Artwork =>
   ({
@@ -43,7 +43,13 @@ describe("collectPages", () => {
       .mockResolvedValueOnce([artwork(31)])
       .mockResolvedValue([artwork(41)]);
 
-    const first = await collectPages(cache, ["sunsets", "all"], 2, 3, fetchPage);
+    const first = await collectPages(
+      cache,
+      ["sunsets", "all"],
+      2,
+      3,
+      fetchPage,
+    );
     expect(first.map((a) => a.id)).toEqual([21, 22, 31]);
     expect(fetchPage).toHaveBeenCalledTimes(2);
 
@@ -59,7 +65,13 @@ describe("collectPages", () => {
     expect(fetchPage).toHaveBeenCalledTimes(2);
 
     // One page further: only the new page fetches.
-    const third = await collectPages(cache, ["sunsets", "all"], 2, 4, fetchPage);
+    const third = await collectPages(
+      cache,
+      ["sunsets", "all"],
+      2,
+      4,
+      fetchPage,
+    );
     expect(third).toHaveLength(4);
     expect(fetchPage).toHaveBeenCalledTimes(3);
   });
@@ -115,5 +127,40 @@ describe("collectPages hooks", () => {
     });
     expect(collected.map((a) => a.id)).toEqual([1]);
     expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dedupeById", () => {
+  it("removes duplicate IDs preserving first-seen order", () => {
+    const items = [artwork(1), artwork(2), artwork(1), artwork(3), artwork(2)];
+    const result = dedupeById(items);
+    expect(result.map((a) => a.id)).toEqual([1, 2, 3]);
+  });
+
+  it("returns the same array when there are no duplicates", () => {
+    const items = [artwork(10), artwork(20), artwork(30)];
+    const result = dedupeById(items);
+    expect(result.map((a) => a.id)).toEqual([10, 20, 30]);
+  });
+
+  it("handles empty input", () => {
+    expect(dedupeById([])).toEqual([]);
+  });
+
+  it("simulates the overlap scenario: page 1 reaches into page 2's window", () => {
+    // Page 1's 36-wide window [0,36) loses 12 items to the open-access
+    // filter, so takeOpenAccessPage reaches into indices 24-35 to fill.
+    // Page 1 serves IDs 0-11 + 24-35 (24 items).
+    const page1 = [
+      ...Array.from({ length: 12 }, (_, i) => artwork(i)), // 0-11
+      ...Array.from({ length: 12 }, (_, i) => artwork(i + 24)), // 24-35
+    ];
+    // Page 2's window [24,60) serves IDs 24-47 — 24-35 overlap with page 1.
+    const page2 = Array.from({ length: 24 }, (_, i) => artwork(i + 24));
+    const combined = [...page1, ...page2];
+    const deduped = dedupeById(combined);
+    // 24 + 24 = 48, but 12 overlap (IDs 24-35) → 36 unique
+    expect(deduped).toHaveLength(36);
+    expect(new Set(deduped.map((a) => a.id)).size).toBe(36);
   });
 });

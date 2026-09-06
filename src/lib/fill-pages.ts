@@ -31,6 +31,27 @@ export function cachePages<T>(
   cache.set(key, items);
 }
 
+/**
+ * Deduplicate artworks by ID, preserving first-seen order.
+ *
+ * `hydrateWindow` uses a 36-wide ID window with a 24-stride, so adjacent
+ * pages overlap by 12 IDs. `takeOpenAccessPage` independently takes the
+ * first 24 public-domain+image-backed items from each window — when the
+ * open-access filter drops items from page 1's window, it reaches into
+ * the overlap region that page 2 also serves, producing duplicate cards
+ * with duplicate React keys. This dedup is the safety net.
+ */
+export function dedupeById(artworks: Artwork[]): Artwork[] {
+  const seen = new Set<number>();
+  const out: Artwork[] = [];
+  for (const a of artworks) {
+    if (seen.has(a.id)) continue;
+    seen.add(a.id);
+    out.push(a);
+  }
+  return out;
+}
+
 export async function collectPages(
   cache: PageCache<Artwork>,
   keyPrefix: Array<string | number | undefined>,

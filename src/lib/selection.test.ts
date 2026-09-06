@@ -4,9 +4,9 @@ import {
   artworkFromSelectionItem,
   emptySelectionState,
   moveSelectionItem,
+  type SelectionState,
   selectionItemFromArtwork,
   selectionReducer,
-  type SelectionState,
 } from "./selection";
 
 const artwork: Artwork = {
@@ -110,7 +110,10 @@ describe("selectionReducer", () => {
     id: number,
     title: string,
   ): SelectionState =>
-    selectionReducer(state, { type: "toggle", artwork: makeArtwork(id, title) });
+    selectionReducer(state, {
+      type: "toggle",
+      artwork: makeArtwork(id, title),
+    });
   const empty: SelectionState = emptySelectionState;
 
   it("announces the truth on a rapid double-toggle: saved, then removed", () => {
@@ -142,7 +145,10 @@ describe("selectionReducer", () => {
       "Removed Wheat Field from your selection",
     );
 
-    const untouched = selectionReducer(removed, { type: "remove", objectId: 1 });
+    const untouched = selectionReducer(removed, {
+      type: "remove",
+      objectId: 1,
+    });
     expect(untouched.announcement).toBe(removed.announcement);
   });
 

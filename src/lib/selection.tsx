@@ -137,9 +137,7 @@ export function selectionReducer(
 ): SelectionState {
   switch (action.type) {
     case "hydrate":
-      return state.items.length > 0
-        ? state
-        : { ...state, items: action.items };
+      return state.items.length > 0 ? state : { ...state, items: action.items };
     case "toggle": {
       const alreadySaved = state.items.some(
         (item) => item.id === action.artwork.id,

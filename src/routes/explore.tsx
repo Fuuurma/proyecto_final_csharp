@@ -29,6 +29,7 @@ import {
   exploreDepartmentSchema,
   isExploreDepartmentFilter,
 } from "@/data/departments";
+import { collectPages, dedupeById, type PageCache } from "@/lib/fill-pages";
 import type { Artwork } from "@/lib/met/normalize";
 import {
   isLiveCollectionSearch,
@@ -36,10 +37,6 @@ import {
   SEARCH_PAGE_SIZE,
 } from "@/lib/met/search-query";
 import { searchCollection } from "@/lib/met/server-functions";
-import {
-  collectPages,
-  type PageCache,
-} from "@/lib/fill-pages";
 
 // Session-scoped memo for tail-fill pages — see fill-pages.ts. One source
 // of truth stays `[...result.artworks, ...extra]`; this only skips
@@ -127,7 +124,7 @@ function Explore() {
           activePath.artworkIds.some((id) => id === artwork.id),
         )
       : null;
-  const works = pathWorks ?? [...result.artworks, ...extra];
+  const works = pathWorks ?? dedupeById([...result.artworks, ...extra]);
   const total = pathWorks ? pathWorks.length : result.total;
   const [hasInput, setHasInput] = useState(Boolean(query));
   const remaining = Math.max(0, total - works.length);
