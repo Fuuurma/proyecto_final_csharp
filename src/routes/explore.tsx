@@ -565,7 +565,7 @@ function ExplorePending() {
     event.preventDefault();
     const formInput =
       event.currentTarget.querySelector<HTMLInputElement>('input[name="q"]');
-    const submittedQuery = String(formInput?.value || query || "").trim();
+    const submittedQuery = String(formInput?.value ?? "").trim();
     void navigate({
       search: {
         q: submittedQuery || undefined,

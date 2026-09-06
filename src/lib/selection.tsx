@@ -160,15 +160,20 @@ export function selectionReducer(
           : state.announcement,
       };
     }
-    case "move":
+    case "move": {
+      const moved = moveSelectionItem(
+        state.items,
+        action.objectId,
+        action.direction,
+      );
+      const movedItem = moved.find((item) => item.id === action.objectId);
       return {
-        ...state,
-        items: moveSelectionItem(
-          state.items,
-          action.objectId,
-          action.direction,
-        ),
+        items: moved,
+        announcement: movedItem
+          ? `Moved ${movedItem.displayTitle} ${action.direction}`
+          : state.announcement,
       };
+    }
     case "clear":
       return { items: [], announcement: "Cleared the local selection" };
   }

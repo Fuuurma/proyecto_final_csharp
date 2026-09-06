@@ -164,4 +164,25 @@ describe("selectionReducer", () => {
     const kept = selectionReducer(live, { type: "hydrate", items: stored });
     expect(kept.items.map((i) => i.id)).toEqual([1]);
   });
+
+  it("move announces the reordering to screen readers", () => {
+    const state = toggle(toggle(empty, 1, "Wheat Field"), 2, "Starry Night");
+    const moved = selectionReducer(state, {
+      type: "move",
+      objectId: 2,
+      direction: -1,
+    });
+    expect(moved.items.map((i) => i.id)).toEqual([2, 1]);
+    expect(moved.announcement).toBe("Moved Starry Night -1");
+  });
+
+  it("move preserves the previous announcement when the item is not found", () => {
+    const state = toggle(empty, 1, "Wheat Field");
+    const moved = selectionReducer(state, {
+      type: "move",
+      objectId: 99,
+      direction: 1,
+    });
+    expect(moved.announcement).toBe(state.announcement);
+  });
 });
