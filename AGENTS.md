@@ -1,9 +1,7 @@
-# Meet the Met — Agent Instructions
-
 <!-- fuurma-hub-start -->
 ## Fuurma Hub Context
 
-This repo is one project inside the Fuurma portfolio workspace. The planner hub
+This repo is one project inside the Fuurma portfolio workspace. The hub
 is the source of truth for cross-project priorities, reusable stack decisions,
 ports, deploy/auth notes, and agent handoffs.
 
@@ -15,16 +13,46 @@ Before meaningful work, read:
 5. Agent skills/context: `~/Projects/hub/tech-stack/AGENT-CONTEXT.md`
 6. Design arsenal: `~/Projects/hub/design/README.md` + `~/Projects/hub/design/APPLY.md`
 
-Fleet findings for this repo land in `~/Projects/hub/research/{devin,needs-work,grok}/`
-and are appended to `~/Projects/hub/research/FEED.md`. Check FEED.md before starting
-work to see if a critic already found something relevant.
+Use the deeper hub docs when relevant:
+- Auth/OAuth: `~/Projects/hub/tech-stack/AUTH-OAUTH.md`
+- Forms: `~/Projects/hub/tech-stack/TANSTACK-FORM.md`
+- Deploy/launch: `~/Projects/hub/tech-stack/SHIP-KIT.md`
+- Ports: `~/Projects/hub/tech-stack/PORTS.md`
+- Secrets/accounts: `~/Projects/hub/tech-stack/ACCOUNTS-SECRETS.md`
+- Fleet findings: `~/Projects/hub/research/FEED.md`
+- Per-finding ledger (if promoted): `~/Projects/hub/projects/meet-the-met/LEDGER.md`
 
 Operational rules:
 - Run `git status --short --branch` before editing and protect dirty user/agent work.
 - Product repo code/tests are the immediate truth; when they disagree with the hub, update the hub after verifying.
 - After reading the hub pointers, keep reading this file's repo-local instructions; they are the authority for this codebase.
+- When you ship a fix from a fleet finding, update the project's LEDGER.md (not just WORK.md).
 - When you learn a reusable pattern, fix, or project-state change, update `~/Projects/hub` so the next agent starts stronger.
+
+### Agent skills and generated guidance
+
+When one of these global skills matches your work, **invoke it immediately** at the start of the session:
+- `design-arsenal` — UI/UX. Front door `~/Projects/hub/design/README.md`. How it lands here: `~/Projects/hub/design/APPLY.md`. Then `design-taste-frontend`, `hallmark`, `impeccable`. Repo `DESIGN.md` wins.
+- `shadcn` — adding, fixing, or reviewing shadcn/ui components and Tailwind v4 styling.
+- `convex` — routing Convex work to the right helper skill (quickstart, auth, components, migrations, performance audit).
+- `stripe-best-practices` — checkout, billing, subscriptions, webhooks, Connect, key handling.
+- `workers-best-practices` / `durable-objects` / `cloudflare` — Cloudflare Workers, Wrangler, bindings, Durable Objects, Agents SDK.
+- `cloudflare-email-service` / `turnstile-spin` — when adding those services.
+
+For Convex repos, run `pnpm exec convex ai-files install` first if
+`convex/_generated/ai/guidelines.md` is missing or stale.
+
+For UI work, use `pnpm dlx shadcn@latest` and follow the `shadcn` skill rules
+(no `space-x/y`, use `gap-*`, `size-*`, `cn()`, semantic tokens, lucide icons,
+`FieldGroup`/`Field`, etc.).
+
+For TanStack Start/Router/Form, there is no global skill; follow `STACK-STANDARDS.md`, `CONVENTIONS.md`, and `TANSTACK-FORM.md`. Use TanStack Form for every new form and every touched legacy form.
+
+For Better Auth, follow `AUTH-OAUTH.md` exactly.
 <!-- fuurma-hub-end -->
+
+
+# Meet the Met — Agent Instructions
 
 This repository is the rebuild of Sergi's 2023 ASP.NET Core class project into
 an independent Open Access collection explorer and a furma.design case study.
@@ -55,15 +83,10 @@ Use this order when instructions disagree:
 
 ## Product boundary
 
-Build the smallest complete public journey:
-
-```text
-Home → Explore → Artwork detail → Save → Selection
-```
-
-Departments and provenance/about are part of the release only after that loop
+Build the smallest complete public journey: Home → Explore → Artwork detail →
+Save → Selection. Departments and provenance/about come only after that loop
 works. No accounts, shared collections, editorial CMS, payments, or user data
-belong in the first release.
+in the first release.
 
 ## Target stack
 
@@ -93,31 +116,6 @@ second source of truth without a written product requirement and owner choice.
 
 Dev scripts must bind to `127.0.0.1` and fail if the assigned port is occupied.
 
-## Planned application shape
-
-```text
-src/
-├── components/
-│   ├── artwork/
-│   ├── explore/
-│   ├── selection/
-│   └── ui/
-├── data/
-│   └── curated-artworks.ts
-├── lib/
-│   ├── met/
-│   │   ├── client.server.ts
-│   │   ├── schemas.ts
-│   │   ├── normalize.ts
-│   │   └── fixtures/
-│   └── selection.ts
-├── routes/
-└── styles/
-```
-
-Follow generated TanStack route conventions once the app is scaffolded. Keep
-server-only modules out of client bundles.
-
 ## The Met API rules
 
 - Raw API JSON stops at `src/lib/met/`; components consume normalized types.
@@ -133,19 +131,6 @@ server-only modules out of client bundles.
   objects, shorter for arbitrary search.
 - Every detail route links to the canonical Met object page.
 - Never imply official affiliation with The Met.
-
-## UI implementation rules
-
-- Read `DESIGN.md` before changing UI.
-- Use semantic HTML, visible focus, keyboard-operable controls, honest empty /
-  loading / error states, reduced motion, and resilient responsive layouts.
-- Preserve artwork aspect ratios. Do not force a uniform card crop.
-- URL search params own shareable search/filter state.
-- localStorage owns Selection only; label it as local to this browser.
-- Avoid autoplay carousels, generic SaaS cards, ornamental gradients, glass
-  surfaces, excessive rounded corners, and decorative motion.
-- shadcn is scaffolding, not the visual identity. Invoke the shadcn skill and
-  inspect project info before adding components.
 
 ## Verification
 
