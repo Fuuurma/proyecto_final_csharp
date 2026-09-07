@@ -70,7 +70,22 @@ export const Route = createFileRoute("/explore")({
   }),
   validateSearch: (search) => {
     const parsed = exploreSearchSchema.safeParse(search);
-    return parsed.success ? parsed.data : {};
+    if (parsed.success) return parsed.data;
+    // Keep whichever individual params are valid so the URL corrects
+    // itself (dropping only the bad key) instead of silently resetting
+    // to page 1 / "all" (devin 21:32 #6).
+    const keys = ["q", "department", "path", "departmentId", "page"] as const;
+    type SearchShape = z.infer<typeof exploreSearchSchema>;
+    const partial: SearchShape = {};
+    for (const key of keys) {
+      const raw = (search as Record<string, unknown>)[key];
+      if (raw === undefined) continue;
+      const single = exploreSearchSchema.safeParse({ [key]: raw });
+      if (single.success) {
+        Object.assign(partial, single.data);
+      }
+    }
+    return partial;
   },
   loaderDeps: ({ search }) => ({
     q: search.q ?? "",

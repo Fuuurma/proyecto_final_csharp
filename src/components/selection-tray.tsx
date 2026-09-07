@@ -17,7 +17,8 @@ export function SelectionTray() {
   return (
     <aside
       className={`selection-tray${collapsed ? " is-collapsed" : ""}`}
-      aria-live="polite"
+      // No aria-live here: SelectionProvider owns announcements, and a
+      // second polite region double-announced every count change.
       aria-label="Your local selection"
     >
       <div className="selection-tray__inner">
