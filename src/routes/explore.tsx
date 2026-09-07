@@ -360,8 +360,11 @@ function Explore() {
           </ToggleGroup>
         </fieldset>
         <span className="explore-count mono">
-          {works.length} / {total}{" "}
-          {result.source === "met" ? "matches loaded" : "review works"}
+          {result.source === "met"
+            ? total > works.length
+              ? `${works.length} loaded · ${total} in the index`
+              : `${works.length} loaded`
+            : `${works.length} / ${total} review works`}
         </span>
         {query ||
         activePath ||
