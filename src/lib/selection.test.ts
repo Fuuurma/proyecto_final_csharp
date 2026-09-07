@@ -173,7 +173,7 @@ describe("selectionReducer", () => {
       direction: -1,
     });
     expect(moved.items.map((i) => i.id)).toEqual([2, 1]);
-    expect(moved.announcement).toBe("Moved Starry Night -1");
+    expect(moved.announcement).toBe("Moved Starry Night earlier");
   });
 
   it("move preserves the previous announcement when the item is not found", () => {
