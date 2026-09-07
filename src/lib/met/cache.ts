@@ -33,7 +33,35 @@ export function getCached<T>(key: string): T | undefined {
   return entry.value as T;
 }
 
+/** Evicted entries keep the isolate-local map bounded: expired entries
+ * only delete on read otherwise, so diverse search traffic (a new key per
+ * query) would accumulate dead entries until the isolate dies. The cap is
+ * generous — the point is a bound, not an LRU. */
+export const MAX_ENTRIES = 500;
+
+function sweepExpired(): void {
+  const now = Date.now();
+  for (const [key, entry] of store) {
+    if (now > entry.expiresAt) store.delete(key);
+  }
+}
+
 export function setCached<T>(key: string, value: T, ttl: number): void {
+  if (store.size >= MAX_ENTRIES) {
+    sweepExpired();
+    if (store.size >= MAX_ENTRIES) {
+      // Still full of live entries: drop the soonest-to-expire.
+      let oldestKey: string | undefined;
+      let oldestExpiry = Infinity;
+      for (const [key, entry] of store) {
+        if (entry.expiresAt < oldestExpiry) {
+          oldestExpiry = entry.expiresAt;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey !== undefined) store.delete(oldestKey);
+    }
+  }
   store.set(key, { value, expiresAt: Date.now() + ttl });
 }
 
