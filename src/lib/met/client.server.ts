@@ -174,6 +174,11 @@ export async function fetchMetSearchIds(
   if (trimmed.length === 0 && options.departmentId !== undefined) {
     url = new URL(`${API_ROOT}/objects`);
     url.searchParams.set("departmentIds", String(options.departmentId));
+    // Same open-access contract as the /search branch below: without
+    // these, `total` includes rows the open-access window can never
+    // show and department browse collapses to the curated fallback.
+    url.searchParams.set("hasImages", "true");
+    url.searchParams.set("isPublicDomain", "true");
   } else {
     url = new URL(`${API_ROOT}/search`);
     url.searchParams.set("q", trimmed.length > 0 ? trimmed : "*");

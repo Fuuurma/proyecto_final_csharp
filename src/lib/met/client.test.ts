@@ -72,6 +72,10 @@ describe("Met API adapter", () => {
       const url = new URL(String(input));
       expect(url.pathname).toContain("/objects");
       expect(url.searchParams.get("departmentIds")).toBe("11");
+      // Open-access filters must match the /search branch, or `total`
+      // counts non-image/non-PD rows the window can never show.
+      expect(url.searchParams.get("hasImages")).toBe("true");
+      expect(url.searchParams.get("isPublicDomain")).toBe("true");
       return response({
         total: 12,
         objectIDs: [10, 11, 12],

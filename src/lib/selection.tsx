@@ -170,7 +170,7 @@ export function selectionReducer(
       return {
         items: moved,
         announcement: movedItem
-          ? `Moved ${movedItem.displayTitle} ${action.direction}`
+          ? `Moved ${movedItem.displayTitle} ${action.direction === 1 ? "later" : "earlier"}`
           : state.announcement,
       };
     }
