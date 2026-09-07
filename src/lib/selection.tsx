@@ -17,6 +17,7 @@ export type SelectionItem = Pick<
   | "displayTitle"
   | "artist"
   | "date"
+  | "primaryImage"
   | "primaryImageSmall"
   | "imageAspectRatio"
 >;
@@ -67,7 +68,9 @@ export function artworkFromSelectionItem(item: SelectionItem): Artwork {
     dimensions: null,
     department: null,
     classification: null,
-    primaryImage: item.primaryImageSmall,
+    // Stored selections made before this field existed fall back to the
+    // small asset; new ones carry the large URL for size="large" views.
+    primaryImage: item.primaryImage ?? item.primaryImageSmall,
     primaryImageSmall: item.primaryImageSmall,
     additionalImages: [],
     imageAspectRatio:
@@ -88,6 +91,7 @@ export function selectionItemFromArtwork(artwork: Artwork): SelectionItem {
     displayTitle: artwork.displayTitle,
     artist: artwork.artist,
     date: artwork.date,
+    primaryImage: artwork.primaryImage,
     primaryImageSmall: artwork.primaryImageSmall,
     imageAspectRatio: artwork.imageAspectRatio,
   };

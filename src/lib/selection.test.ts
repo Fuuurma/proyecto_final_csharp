@@ -23,7 +23,7 @@ const artwork: Artwork = {
   dimensions: null,
   department: null,
   classification: null,
-  primaryImage: null,
+  primaryImage: "https://example.com/work-large.jpg",
   primaryImageSmall: "https://example.com/work.jpg",
   additionalImages: [],
   imageAspectRatio: 1,
@@ -41,6 +41,7 @@ describe("selectionItemFromArtwork", () => {
       displayTitle: "A work",
       artist: "An artist",
       date: "1900",
+      primaryImage: "https://example.com/work-large.jpg",
       primaryImageSmall: "https://example.com/work.jpg",
       imageAspectRatio: 1,
     });
@@ -54,12 +55,21 @@ describe("artworkFromSelectionItem", () => {
     expect(local.id).toBe(42);
     expect(local.displayTitle).toBe("A work");
     expect(local.artist).toBe("An artist");
-    expect(local.primaryImage).toBe("https://example.com/work.jpg");
+    expect(local.primaryImage).toBe("https://example.com/work-large.jpg");
     expect(local.canonicalUrl).toBe(
       "https://www.metmuseum.org/art/collection/search/42",
     );
     expect(local.department).toBeNull();
     expect(local.additionalImages).toEqual([]);
+  });
+});
+
+describe("artworkFromSelectionItem legacy fallback", () => {
+  it("falls back to the small asset for selections stored before primaryImage existed", () => {
+    const legacy = selectionItemFromArtwork(artwork);
+    delete (legacy as { primaryImage?: string }).primaryImage;
+    const local = artworkFromSelectionItem(legacy);
+    expect(local.primaryImage).toBe("https://example.com/work.jpg");
   });
 });
 
