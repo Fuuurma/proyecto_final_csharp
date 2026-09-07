@@ -14,7 +14,9 @@ const providerSource = readFileSync(join(here, "..", "lib", "selection.tsx"), "u
  */
 describe("selection announcements", () => {
   it("tray carries no live region of its own", () => {
-    expect(traySource).not.toMatch(/aria-live/);
+    // Match the attribute form (the source's explanatory comment says
+    // "No aria-live here" without an equals sign).
+    expect(traySource).not.toMatch(/aria-live=/);
   });
 
   it("the provider owns exactly one announcement region", () => {
