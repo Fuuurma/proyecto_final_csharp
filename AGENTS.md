@@ -9,7 +9,7 @@ Before meaningful work, read:
 1. Kanban status: `~/Projects/hub/BOARD.md`
 2. Current sprint / next work: `~/Projects/hub/WORK.md`
 3. This project's state: `~/Projects/hub/projects/meet-the-met.md`
-4. Standard stack playbook: `~/Projects/hub/tech-stack/STACK-STANDARDS.md`
+4. Standard stack playbook: `~/Projects/hub/tech-stack/CONVENTIONS.md`
 5. Agent skills/context: `~/Projects/hub/tech-stack/AGENT-CONTEXT.md`
 6. Design arsenal: `~/Projects/hub/design/README.md` + `~/Projects/hub/design/APPLY.md`
 
@@ -46,7 +46,7 @@ For UI work, use `pnpm dlx shadcn@latest` and follow the `shadcn` skill rules
 (no `space-x/y`, use `gap-*`, `size-*`, `cn()`, semantic tokens, lucide icons,
 `FieldGroup`/`Field`, etc.).
 
-For TanStack Start/Router/Form, there is no global skill; follow `STACK-STANDARDS.md`, `CONVENTIONS.md`, and `TANSTACK-FORM.md`. Use TanStack Form for every new form and every touched legacy form.
+For TanStack Start/Router/Form, there is no global skill; follow `CONVENTIONS.md`, `CONVENTIONS.md`, and `TANSTACK-FORM.md`. Use TanStack Form for every new form and every touched legacy form.
 
 For Better Auth, follow `AUTH-OAUTH.md` exactly.
 <!-- fuurma-hub-end -->
