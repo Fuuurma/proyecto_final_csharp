@@ -46,7 +46,7 @@ For UI work, use `pnpm dlx shadcn@latest` and follow the `shadcn` skill rules
 (no `space-x/y`, use `gap-*`, `size-*`, `cn()`, semantic tokens, lucide icons,
 `FieldGroup`/`Field`, etc.).
 
-For TanStack Start/Router/Form, there is no global skill; follow `CONVENTIONS.md`, `CONVENTIONS.md`, and `TANSTACK-FORM.md`. Use TanStack Form for every new form and every touched legacy form.
+For TanStack Start/Router/Form, there is no global skill; follow `CONVENTIONS.md` and `TANSTACK-FORM.md`. Use TanStack Form for every new form and every touched legacy form.
 
 For Better Auth, follow `AUTH-OAUTH.md` exactly.
 <!-- fuurma-hub-end -->
