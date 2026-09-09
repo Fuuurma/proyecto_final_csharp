@@ -141,10 +141,16 @@ function ArtworkDetail() {
   }
 
   const related = getRelatedArtworks(artwork, curatedArtworks);
+  // Deduped: a live object whose additionalImages repeat the primary
+  // would otherwise yield duplicate tab keys (devin 09-09 23:37 #7).
   const imageSources = [
-    artwork.primaryImage ?? artwork.primaryImageSmall,
-    ...artwork.additionalImages,
-  ].filter((source): source is string => Boolean(source));
+    ...new Set(
+      [
+        artwork.primaryImage ?? artwork.primaryImageSmall,
+        ...artwork.additionalImages,
+      ].filter((source): source is string => Boolean(source)),
+    ),
+  ];
 
   return (
     <main className="detail-page">
