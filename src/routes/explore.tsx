@@ -139,6 +139,17 @@ function Explore() {
   // leave the grid silently stuck (devin 09-09 20:57 #1) — now it shows.
   const [fillFailed, setFillFailed] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  // Reset the previous search's tail-fill the moment the search identity
+  // changes — adjusting state during render (the React-sanctioned
+  // pattern) so a new query never paints one frame of stale extras
+  // (devin 09-10 00:19).
+  const searchKey = `${query}|${activeDepartment}|${departmentId ?? ""}|${pathSlug ?? ""}|${live ? "live" : "curated"}`;
+  const [prevSearchKey, setPrevSearchKey] = useState(searchKey);
+  if (prevSearchKey !== searchKey) {
+    setPrevSearchKey(searchKey);
+    setExtra([]);
+    setFillFailed(false);
+  }
   const pathWorks =
     activePath && !live
       ? result.artworks.filter((artwork) =>
@@ -565,8 +576,9 @@ function Explore() {
           ) : null}
           {fillFailed ? (
             <p className="explore-fill-failed" role="status">
-              Some pages failed to load — the grid shows what arrived. Load more
-              to try again.
+              {atCap
+                ? "Some pages failed to load within the record cap — the grid shows what arrived."
+                : "Some pages failed to load — the grid shows what arrived. Load more to try again."}
             </p>
           ) : null}
           {atCap ? (
