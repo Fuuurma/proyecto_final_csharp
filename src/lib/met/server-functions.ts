@@ -337,8 +337,11 @@ export const listDepartments = createServerFn({ method: "GET" }).handler(
         departments: await fetchMetDepartments(),
       };
     } catch (error) {
+      // Honest signal: a fixture fallback after a live failure is an
+      // outage the caller can see, not a healthy success (devin 09-09
+      // 21:37 #2 — third repeat of the dishonest contract).
       return {
-        status: "success",
+        status: "error",
         source: "fixture",
         departments: metDepartments,
         message: apiErrorMessage(error, "Met department index"),
