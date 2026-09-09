@@ -1,4 +1,9 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  notFound,
+  useNavigate,
+} from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
@@ -66,8 +71,16 @@ export const Route = createFileRoute("/art/$objectId")({
 
     return { meta };
   },
-  loader: ({ params }) =>
-    getArtwork({ data: { objectId: Number(params.objectId) } }),
+  loader: ({ params }) => {
+    // Non-numeric slugs (/art/abc) are a wrong address, not a validator
+    // error — 404 instead of surfacing the Zod failure through RouteError
+    // (devin 09-09 16:57 #1).
+    const objectId = Number(params.objectId);
+    if (!Number.isInteger(objectId) || objectId <= 0) {
+      throw notFound();
+    }
+    return getArtwork({ data: { objectId } });
+  },
   pendingComponent: ArtworkDetailPending,
   component: ArtworkDetail,
 });

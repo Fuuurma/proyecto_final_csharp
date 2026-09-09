@@ -176,14 +176,16 @@ describe("selectionReducer", () => {
   });
 
   it("move announces the reordering to screen readers", () => {
+    // toggle prepends: the hanging is [2 Starry Night, 1 Wheat Field].
+    // Moving 1 earlier is a real reorder (index 1 → 0).
     const state = toggle(toggle(empty, 1, "Wheat Field"), 2, "Starry Night");
     const moved = selectionReducer(state, {
       type: "move",
-      objectId: 2,
+      objectId: 1,
       direction: -1,
     });
-    expect(moved.items.map((i) => i.id)).toEqual([2, 1]);
-    expect(moved.announcement).toBe("Moved Starry Night earlier");
+    expect(moved.items.map((i) => i.id)).toEqual([1, 2]);
+    expect(moved.announcement).toBe("Moved Wheat Field earlier");
   });
 
   it("move preserves the previous announcement when the item is not found", () => {
@@ -194,5 +196,27 @@ describe("selectionReducer", () => {
       direction: 1,
     });
     expect(moved.announcement).toBe(state.announcement);
+  });
+
+  it("move at either edge is a no-op and keeps the previous announcement", () => {
+    // The first item cannot move earlier and the last cannot move later —
+    // announcing the move anyway lied about the outcome (devin 09-09
+    // 16:57 #3). Hanging is [2 Starry Night, 1 Wheat Field] (prepend).
+    const state = toggle(toggle(empty, 1, "Wheat Field"), 2, "Starry Night");
+    const atStart = selectionReducer(state, {
+      type: "move",
+      objectId: 2,
+      direction: -1,
+    });
+    expect(atStart.items.map((i) => i.id)).toEqual([2, 1]);
+    expect(atStart.announcement).toBe(state.announcement);
+
+    const atEnd = selectionReducer(state, {
+      type: "move",
+      objectId: 1,
+      direction: 1,
+    });
+    expect(atEnd.items.map((i) => i.id)).toEqual([2, 1]);
+    expect(atEnd.announcement).toBe(state.announcement);
   });
 });

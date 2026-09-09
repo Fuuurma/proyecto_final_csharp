@@ -47,6 +47,10 @@ function sweepExpired(): void {
 }
 
 export function setCached<T>(key: string, value: T, ttl: number): void {
+  // Updating an existing key is a refresh, not an insertion — it must
+  // not evict an unrelated entry (devin 09-09 16:57 #8). Delete first
+  // so the capacity check sees the true free budget.
+  store.delete(key);
   if (store.size >= MAX_ENTRIES) {
     sweepExpired();
     if (store.size >= MAX_ENTRIES) {

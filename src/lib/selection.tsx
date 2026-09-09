@@ -165,17 +165,26 @@ export function selectionReducer(
       };
     }
     case "move": {
+      // Announce only real moves: at either edge moveSelectionItem
+      // returns the array unchanged, and announcing "Moved X later" for
+      // a no-op lied about the outcome (devin 09-09 16:57 #3).
+      const previousIndex = state.items.findIndex(
+        (item) => item.id === action.objectId,
+      );
       const moved = moveSelectionItem(
         state.items,
         action.objectId,
         action.direction,
       );
-      const movedItem = moved.find((item) => item.id === action.objectId);
+      const nextIndex = moved.findIndex((item) => item.id === action.objectId);
+      const actuallyMoved = previousIndex !== -1 && previousIndex !== nextIndex;
+      const movedItem = moved[nextIndex] ?? state.items[previousIndex];
       return {
         items: moved,
-        announcement: movedItem
-          ? `Moved ${movedItem.displayTitle} ${action.direction === 1 ? "later" : "earlier"}`
-          : state.announcement,
+        announcement:
+          actuallyMoved && movedItem
+            ? `Moved ${movedItem.displayTitle} ${action.direction === 1 ? "later" : "earlier"}`
+            : state.announcement,
       };
     }
     case "clear":
