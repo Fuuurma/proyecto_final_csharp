@@ -1,8 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { buttonVariants } from "#/components/ui/button";
-import { cn } from "#/lib/utils";
 import { ArtworkImage } from "@/components/artwork-image";
 import { ArrowUpRightIcon } from "@/components/icons";
+import { buttonVariants } from "@/components/ui/button";
 import {
   curatedArtworks,
   curatedPaths,
@@ -11,6 +10,7 @@ import {
 } from "@/data/curated-artworks";
 import { reviewDepartments } from "@/data/departments";
 import type { Artwork } from "@/lib/met/normalize";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({

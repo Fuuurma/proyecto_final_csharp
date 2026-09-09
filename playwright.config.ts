@@ -26,10 +26,10 @@ export default defineConfig({
     },
     {
       name: "mobile",
-      use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 375, height: 812 },
-      },
+      // A real mobile descriptor: touch emulation, mobile UA, and device
+      // scale factor — a narrow Desktop Chrome viewport was none of those
+      // (devin 09-09 16:17 #4).
+      use: { ...devices["Pixel 7"] },
     },
   ],
 });

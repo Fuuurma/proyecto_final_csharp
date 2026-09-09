@@ -53,10 +53,10 @@ export function setCached<T>(key: string, value: T, ttl: number): void {
       // Still full of live entries: drop the soonest-to-expire.
       let oldestKey: string | undefined;
       let oldestExpiry = Infinity;
-      for (const [key, entry] of store) {
+      for (const [candidateKey, entry] of store) {
         if (entry.expiresAt < oldestExpiry) {
           oldestExpiry = entry.expiresAt;
-          oldestKey = key;
+          oldestKey = candidateKey;
         }
       }
       if (oldestKey !== undefined) store.delete(oldestKey);

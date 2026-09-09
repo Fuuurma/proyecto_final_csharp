@@ -6,22 +6,21 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
-import { Button, buttonVariants } from "#/components/ui/button";
+import { ArtworkCard } from "@/components/artwork-card";
+import { CloseIcon, SearchIcon } from "@/components/icons";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Empty,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
-} from "#/components/ui/empty";
-import { Field, FieldGroup, FieldLabel } from "#/components/ui/field";
-import { Input } from "#/components/ui/input";
-import { Skeleton } from "#/components/ui/skeleton";
-import { ToggleGroup, ToggleGroupItem } from "#/components/ui/toggle-group";
-import { cn } from "#/lib/utils";
-import { ArtworkCard } from "@/components/artwork-card";
-import { CloseIcon, SearchIcon } from "@/components/icons";
+} from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { curatedPaths } from "@/data/curated-artworks";
 import {
   departmentNameById,
@@ -37,6 +36,7 @@ import {
   SEARCH_PAGE_SIZE,
 } from "@/lib/met/search-query";
 import { searchCollection } from "@/lib/met/server-functions";
+import { cn } from "@/lib/utils";
 
 // Session-scoped memo for tail-fill pages — see fill-pages.ts. One source
 // of truth stays `[...result.artworks, ...extra]`; this only skips
@@ -306,7 +306,7 @@ function Explore() {
         </p>
       </section>
 
-      <search>
+      <search aria-label="Search the collection">
         <form className="search-form" onSubmit={submit}>
           <FieldGroup className="search-field-group">
             <Field orientation="horizontal" className="search-field">
@@ -621,7 +621,7 @@ function ExplorePending() {
         </div>
         <p>Fetching a bounded page of open-access records.</p>
       </section>
-      <search>
+      <search aria-label="Search the collection">
         <form className="search-form" onSubmit={submit}>
           <FieldGroup className="search-field-group">
             <Field orientation="horizontal" className="search-field">

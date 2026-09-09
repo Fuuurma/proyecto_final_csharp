@@ -1,5 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { ArtworkImage } from "@/components/artwork-image";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ArrowUpRightIcon,
+  CloseIcon,
+} from "@/components/icons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,27 +17,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "#/components/ui/alert-dialog";
-import { Button, buttonVariants } from "#/components/ui/button";
+} from "@/components/ui/alert-dialog";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Empty,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
-} from "#/components/ui/empty";
-import { Separator } from "#/components/ui/separator";
-import { Skeleton } from "#/components/ui/skeleton";
-import { cn } from "#/lib/utils";
-import { ArtworkImage } from "@/components/artwork-image";
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  ArrowUpRightIcon,
-  CloseIcon,
-} from "@/components/icons";
+} from "@/components/ui/empty";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { curatedArtworks, featuredArtwork } from "@/data/curated-artworks";
 import { type SelectionItem, useSelection } from "@/lib/selection";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/selection")({
   head: () => ({

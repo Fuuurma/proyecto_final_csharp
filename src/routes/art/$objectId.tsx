@@ -1,18 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
-import { Button, buttonVariants } from "#/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  DialogTrigger,
-} from "#/components/ui/dialog";
-import { Separator } from "#/components/ui/separator";
-import { Skeleton } from "#/components/ui/skeleton";
-import { cn } from "#/lib/utils";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
 import {
@@ -24,6 +11,18 @@ import {
   ShareIcon,
 } from "@/components/icons";
 import { SaveButton } from "@/components/save-button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { curatedArtworks } from "@/data/curated-artworks";
 import { isReviewDepartmentName } from "@/data/departments";
 import type { Artwork } from "@/lib/met/normalize";
@@ -33,6 +32,7 @@ import {
 } from "@/lib/met/server-functions";
 import { getRelatedArtworks } from "@/lib/related";
 import { artworkFromSelectionItem, useSelection } from "@/lib/selection";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/art/$objectId")({
   head: ({ loaderData }: { loaderData?: ArtworkDetailResult }) => {

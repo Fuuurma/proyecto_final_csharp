@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { ArtworkImage } from "@/components/artwork-image";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { curatedArtworks } from "@/data/curated-artworks";
 import {
   exploreSearchForDepartment,

@@ -9,12 +9,12 @@ import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/newsreader";
 import "@fontsource/dm-mono/400.css";
 import "@fontsource/dm-mono/500.css";
-import { buttonVariants } from "#/components/ui/button";
-import { cn } from "#/lib/utils";
 import { ArrowUpRightIcon } from "@/components/icons";
 import { SelectionTray } from "@/components/selection-tray";
 import { SiteHeader } from "@/components/site-header";
+import { buttonVariants } from "@/components/ui/button";
 import { SelectionProvider } from "@/lib/selection";
+import { cn } from "@/lib/utils";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
