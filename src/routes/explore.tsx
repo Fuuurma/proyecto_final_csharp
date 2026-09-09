@@ -669,6 +669,7 @@ function ExplorePending() {
                 name="q"
                 key={query}
                 defaultValue={query}
+                maxLength={120}
                 placeholder="Try “van Gogh”, “waves”, or “portraits”"
                 type="search"
               />
