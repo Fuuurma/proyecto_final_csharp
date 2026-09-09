@@ -169,6 +169,11 @@ function Selection() {
                     to="/art/$objectId"
                     params={{ objectId: String(item.id) }}
                     className="selection-row__image"
+                    aria-label={
+                      artwork?.displayTitle ??
+                      item.displayTitle ??
+                      `Object ${item.id}`
+                    }
                   >
                     {artwork ? (
                       <ArtworkImage artwork={artwork} />

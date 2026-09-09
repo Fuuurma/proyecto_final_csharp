@@ -31,7 +31,8 @@
       "!**/.output",
       "!**/.wrangler",
       "!**/.agents",
-      "!**/.claude"
+      "!**/.claude",
+      "!**/.cursor"
     ]
   }
 }
