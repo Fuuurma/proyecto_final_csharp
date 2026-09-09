@@ -378,7 +378,9 @@ function Explore() {
         <span className="explore-count mono">
           {result.source === "met"
             ? total > works.length
-              ? `${works.length} loaded · ${total} in the index`
+              ? result.preFiltered === false
+                ? `${works.length} loaded · ${total} listed in the department`
+                : `${works.length} loaded · ${total} in the index`
               : `${works.length} loaded`
             : `${works.length} / ${total} review works`}
         </span>

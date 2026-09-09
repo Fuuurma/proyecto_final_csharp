@@ -43,6 +43,13 @@ export type CollectionSearchResult = {
   department: string;
   departmentId?: number;
   total: number;
+  /**
+   * Met-source only: false when the IDs came from the /objects endpoint,
+   * which ignores the open-access params — `total` then counts the whole
+   * department, not rows the sieve can actually show. The Explore counter
+   * words its denominator accordingly (devin 09-09 19:37 #3).
+   */
+  preFiltered?: boolean;
   artworks: Artwork[];
   message?: string;
 };
@@ -235,6 +242,7 @@ export const searchCollection = createServerFn({ method: "GET" })
         department: liveDepartmentName,
         departmentId: mappedDepartmentId,
         total: search.total,
+        preFiltered: search.preFiltered,
         artworks,
         message:
           status === "partial"
