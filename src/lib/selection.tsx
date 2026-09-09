@@ -195,7 +195,13 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isHydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } catch {
+      // Private mode / quota-exceeded: the in-memory tray keeps working,
+      // persistence just degrades for this visit. Mirrors readSelection's
+      // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
+    }
   }, [isHydrated, items]);
 
   const has = useCallback(

@@ -46,7 +46,10 @@ export const metObjectSchema = z
 export const metSearchSchema = z
   .object({
     total: z.number(),
-    objectIDs: z.array(z.number()).nullable().default([]),
+    // The Met API really does send null for objectIDs on some responses —
+    // .default alone only fires on undefined, so the null case needs
+    // nullish + a transform, not a dead default (devin 09-09 14:17 #8).
+    objectIDs: z.array(z.number()).nullish().transform((v) => v ?? []),
   })
   .passthrough();
 
