@@ -176,7 +176,16 @@ function ArtworkDetail() {
         aria-labelledby="artwork-title"
       >
         <div className="detail-image-column">
-          <ArtworkStage artwork={artwork} imageSources={imageSources} />
+          {/* Remount per object: ArtworkStage holds activeSrc in state —
+              without the key, prev/next navigation kept showing the
+              previous object's image until a tab was clicked, and a
+              single-image object had no tabs to recover with
+              (devin 09-09 18:57 #1). */}
+          <ArtworkStage
+            key={objectId}
+            artwork={artwork}
+            imageSources={imageSources}
+          />
           <div className="detail-image-footer">
             <p className="image-credit">
               Image: The Metropolitan Museum of Art, Open Access
