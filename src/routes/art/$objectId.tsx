@@ -96,12 +96,14 @@ function ArtworkDetail() {
       if (event.key === "ArrowLeft" && adjacent.previous) {
         event.preventDefault();
         void navigate({
+          from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.previous.id) },
         });
       } else if (event.key === "ArrowRight" && adjacent.next) {
         event.preventDefault();
         void navigate({
+          from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.next.id) },
         });

@@ -251,7 +251,13 @@ export async function fetchMetObjects(
 
       try {
         results[next.index] = await fetchMetObject(next.objectId, options);
-      } catch {
+      } catch (error) {
+        // A failed object degrades to null in the batch — but the failure
+        // must be visible, not silently absorbed (devin 09-09 13:37).
+        console.warn(
+          `[met] object ${next.objectId} fetch failed; returning null for this slot`,
+          error,
+        );
         results[next.index] = null;
       }
     }

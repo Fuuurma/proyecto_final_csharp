@@ -101,7 +101,8 @@ in the first release.
 - Zod at external-data and user-input boundaries
 - TanStack Query only for direct live Met API state when route loaders/server
   functions do not already own the lifecycle
-- Vitest + Testing Library + Playwright
+- Vitest (node environment — data/logic contracts) + Playwright
+  (Testing Library/jsdom not installed; add with the first component test)
 - Biome
 - Cloudflare Workers through the Cloudflare Vite plugin and Wrangler
 
