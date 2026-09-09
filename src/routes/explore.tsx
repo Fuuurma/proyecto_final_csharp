@@ -170,7 +170,10 @@ function Explore() {
         !["INPUT", "TEXTAREA", "SELECT"].includes(
           (event.target as HTMLElement)?.tagName,
         ) &&
-        !(event.target as HTMLElement)?.isContentEditable
+        !(event.target as HTMLElement)?.isContentEditable &&
+        // A dialog owns the keyboard; the shortcut must not steal focus
+        // from it (devin 09-09 19:37 #8 — preventive).
+        !document.querySelector("[role='dialog']")
       ) {
         event.preventDefault();
         const input = document.getElementById(

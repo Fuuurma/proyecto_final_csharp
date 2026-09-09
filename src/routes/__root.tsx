@@ -42,7 +42,17 @@ export const Route = createRootRoute({
       },
       { name: "twitter:card", content: "summary_large_image" },
     ],
-    links: [{ rel: "stylesheet", href: appCss }],
+    links: [
+      { rel: "stylesheet", href: appCss },
+      // Warm the Met image origin before the first artwork paint
+      // (devin 09-09 19:37 #9).
+      {
+        rel: "preconnect",
+        href: "https://images.metmuseum.org",
+        crossOrigin: "anonymous",
+      },
+      { rel: "dns-prefetch", href: "https://images.metmuseum.org" },
+    ],
   }),
   notFoundComponent: RootNotFound,
   errorComponent: RouteError,

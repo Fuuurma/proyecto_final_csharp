@@ -105,6 +105,11 @@ function ArtworkDetail() {
       ) {
         return;
       }
+      // An open dialog owns the keyboard — navigating underneath it
+      // unmounted the artwork being inspected (devin 09-09 19:37 #1).
+      if (document.querySelector("[role='dialog']")) {
+        return;
+      }
 
       if (event.key === "ArrowLeft" && adjacent.previous) {
         event.preventDefault();
