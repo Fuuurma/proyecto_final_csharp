@@ -29,7 +29,9 @@
       "!**/playwright-report",
       "!**/test-results",
       "!**/.output",
-      "!**/.wrangler"
+      "!**/.wrangler",
+      "!**/.agents",
+      "!**/.claude"
     ]
   }
 }

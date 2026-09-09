@@ -5,7 +5,10 @@ import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const traySource = readFileSync(join(here, "selection-tray.tsx"), "utf8");
-const providerSource = readFileSync(join(here, "..", "lib", "selection.tsx"), "utf8");
+const providerSource = readFileSync(
+  join(here, "..", "lib", "selection.tsx"),
+  "utf8",
+);
 
 /**
  * Announcements must come from exactly one region. The tray once carried
