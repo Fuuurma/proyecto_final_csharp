@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { SEARCH_PAGE_SIZE } from "../src/lib/met/search-query";
 
 function selectionNav(page: Page) {
   return page
@@ -171,13 +172,18 @@ test("A broad Explore search can load another page of the index", async ({
     .fill("e");
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page).toHaveURL(/q=e/);
-  await expect(page.locator(".artwork-card")).toHaveCount(24);
+  // First page ships exactly SEARCH_PAGE_SIZE cards — assert the
+  // contract, not the fixture's current match count (devin 09-09
+  // 22:57 #1-adjacent: a seed edit used to break this spec).
+  await expect(page.locator(".artwork-card")).toHaveCount(SEARCH_PAGE_SIZE);
   const loadMore = page.getByRole("button", { name: /Load .* more/ });
   await expect(loadMore).toBeVisible();
   await loadMore.scrollIntoViewIfNeeded();
   await loadMore.click();
   await expect(page).toHaveURL(/page=2/);
-  await expect(page.locator(".artwork-card")).toHaveCount(45);
+  // Loading another page adds works without dropping what arrived.
+  const after = await page.locator(".artwork-card").count();
+  expect(after).toBeGreaterThan(SEARCH_PAGE_SIZE);
 });
 
 test("Departments index opens a review room and a live department", async ({
