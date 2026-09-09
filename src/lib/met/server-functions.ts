@@ -21,9 +21,9 @@ import {
   pageItems,
   resolvedDepartmentId,
   SEARCH_MAX_PAGE,
-  SEARCH_PAGE_SIZE,
   takeOpenAccessPage,
 } from "./search-query";
+import { computeSearchStatus } from "./search-status";
 
 const collectionSearchInputSchema = z.object({
   q: z.string().trim().max(120).default(""),
@@ -212,24 +212,15 @@ export const searchCollection = createServerFn({ method: "GET" })
         }
       }
 
-      // Outage ordering: a total hydration failure must read as partial,
-      // not empty — empty is for a genuinely empty result set (codex sol
-      // review 09-09: the artworks.length===0 check used to win and hide
-      // full outages).
-      const status =
-        search.objectIds.length === 0
-          ? "empty"
-          : hydrated.length < pageIds.length ||
-              (search.preFiltered &&
-                artworks.length < Math.min(SEARCH_PAGE_SIZE, pageIds.length))
-            ? "partial"
-            : artworks.length === 0
-              ? "empty"
-              : "success";
-      // partial means "the source promised usable rows it did not
-      // deliver". On the /objects branch nothing was promised — the
-      // open-access sieve dropping non-open-access department rows is
-      // the designed filter, not an outage (devin 09-09 14:17 #1/#5).
+      // Outcome semantics live in computeSearchStatus — pinned across all
+      // branches there (empty index, outage-vs-sieve drops, success).
+      const status = computeSearchStatus({
+        totalIds: search.objectIds.length,
+        hydratedCount: hydrated.length,
+        pageIdCount: pageIds.length,
+        usableCount: artworks.length,
+        preFiltered: search.preFiltered,
+      });
       const liveDepartmentName =
         (mappedDepartmentId !== undefined
           ? departmentNameById(mappedDepartmentId)
