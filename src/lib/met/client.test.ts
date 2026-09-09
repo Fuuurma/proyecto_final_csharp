@@ -44,7 +44,7 @@ describe("Met API adapter", () => {
 
     await expect(
       fetchMetSearchIds("paintings", { fetcher, limit: 3 }),
-    ).resolves.toEqual({ total: 30, objectIds: [1, 2, 3] });
+    ).resolves.toEqual({ total: 30, objectIds: [1, 2, 3], preFiltered: true });
   });
 
   it("treats a null objectIDs list as an empty search", async () => {
@@ -54,6 +54,7 @@ describe("Met API adapter", () => {
     await expect(fetchMetSearchIds("nope", { fetcher })).resolves.toEqual({
       total: 0,
       objectIds: [],
+      preFiltered: true,
     });
   });
 
@@ -72,8 +73,10 @@ describe("Met API adapter", () => {
       const url = new URL(String(input));
       expect(url.pathname).toContain("/objects");
       expect(url.searchParams.get("departmentIds")).toBe("11");
-      // Open-access filters must match the /search branch, or `total`
-      // counts non-image/non-PD rows the window can never show.
+      // /objects IGNORES these filters (only /search honours them) — they
+      // are forward-compatibility only, and preFiltered:false tells the
+      // caller the open-access sieve is the real contract (devin 09-09
+      // 14:17 #1).
       expect(url.searchParams.get("hasImages")).toBe("true");
       expect(url.searchParams.get("isPublicDomain")).toBe("true");
       return response({
@@ -84,7 +87,11 @@ describe("Met API adapter", () => {
 
     await expect(
       fetchMetSearchIds("", { fetcher, departmentId: 11, limit: 2 }),
-    ).resolves.toEqual({ total: 12, objectIds: [10, 11] });
+    ).resolves.toEqual({
+      total: 12,
+      objectIds: [10, 11],
+      preFiltered: false,
+    });
   });
 
   it("reads the committed department index shape", async () => {

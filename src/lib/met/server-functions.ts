@@ -212,13 +212,24 @@ export const searchCollection = createServerFn({ method: "GET" })
         }
       }
 
+      // Outage ordering: a total hydration failure must read as partial,
+      // not empty — empty is for a genuinely empty result set (codex sol
+      // review 09-09: the artworks.length===0 check used to win and hide
+      // full outages).
       const status =
-        search.objectIds.length === 0 || artworks.length === 0
+        search.objectIds.length === 0
           ? "empty"
           : hydrated.length < pageIds.length ||
-              artworks.length < Math.min(SEARCH_PAGE_SIZE, pageIds.length)
+              (search.preFiltered &&
+                artworks.length < Math.min(SEARCH_PAGE_SIZE, pageIds.length))
             ? "partial"
-            : "success";
+            : artworks.length === 0
+              ? "empty"
+              : "success";
+      // partial means "the source promised usable rows it did not
+      // deliver". On the /objects branch nothing was promised — the
+      // open-access sieve dropping non-open-access department rows is
+      // the designed filter, not an outage (devin 09-09 14:17 #1/#5).
       const liveDepartmentName =
         (mappedDepartmentId !== undefined
           ? departmentNameById(mappedDepartmentId)

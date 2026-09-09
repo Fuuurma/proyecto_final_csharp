@@ -167,18 +167,25 @@ export async function fetchMetSearchIds(
     limit?: number;
     departmentId?: number;
   } = {},
-): Promise<{ total: number; objectIds: number[] }> {
+): Promise<{ total: number; objectIds: number[]; preFiltered: boolean }> {
   let url: URL;
+  // Whether the upstream ALREADY filtered to open-access rows decides how
+  // the caller may interpret drops: /search honours the params, /objects
+  // ignores them (devin 09-09 14:17 #1) — there the client-side sieve in
+  // takeOpenAccessPage is the contract, and drops are expected, not
+  // "partial".
+  let preFiltered: boolean;
   const trimmed = query.trim();
 
   if (trimmed.length === 0 && options.departmentId !== undefined) {
     url = new URL(`${API_ROOT}/objects`);
     url.searchParams.set("departmentIds", String(options.departmentId));
-    // Same open-access contract as the /search branch below: without
-    // these, `total` includes rows the open-access window can never
-    // show and department browse collapses to the curated fallback.
+    // hasImages/isPublicDomain are IGNORED by /objects — sent for
+    // forward-compatibility only. total here counts the whole
+    // department; the open-access window is the client's job.
     url.searchParams.set("hasImages", "true");
     url.searchParams.set("isPublicDomain", "true");
+    preFiltered = false;
   } else {
     url = new URL(`${API_ROOT}/search`);
     url.searchParams.set("q", trimmed.length > 0 ? trimmed : "*");
@@ -187,6 +194,7 @@ export async function fetchMetSearchIds(
     if (options.departmentId !== undefined) {
       url.searchParams.set("departmentId", String(options.departmentId));
     }
+    preFiltered = true;
   }
 
   // The `limit` option is a caller-side slice, not part of the upstream
@@ -195,7 +203,11 @@ export async function fetchMetSearchIds(
   const useCache = options.fetcher === undefined;
 
   if (useCache) {
-    const cached = getCached<{ total: number; objectIds: number[] }>(cacheKey);
+    const cached = getCached<{
+      total: number;
+      objectIds: number[];
+      preFiltered: boolean;
+    }>(cacheKey);
     if (cached) {
       return options.limit === undefined
         ? cached
@@ -218,7 +230,7 @@ export async function fetchMetSearchIds(
   }
 
   const objectIds = parsed.data.objectIDs ?? [];
-  const result = { total: parsed.data.total, objectIds };
+  const result = { total: parsed.data.total, objectIds, preFiltered };
 
   if (useCache) setCached(cacheKey, result, CACHE_TTL_MS.search);
   return options.limit === undefined

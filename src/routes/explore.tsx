@@ -114,7 +114,10 @@ function Explore() {
     departmentId,
     page: pageParam,
   } = useSearch({ from: "/explore" });
-  const query = q ?? "";
+  // Trimmed like the server validator — a whitespace-only q must not
+  // make the client think the view is live while the server returns
+  // curated results (codex sol review 09-09).
+  const query = (q ?? "").trim();
   const activeDepartment = department ?? "all";
   const page = pageParam ?? 1;
   const activePath = curatedPaths.find((path) => path.slug === pathSlug);
@@ -139,6 +142,10 @@ function Explore() {
           activePath.artworkIds.some((id) => id === artwork.id),
         )
       : null;
+  // The path chrome only describes the grid when the path actually owns
+  // it — with a query active the grid is live Met results, and labelling
+  // them with the path title lied (devin 09-09 14:17 #3 / 14:57 #1).
+  const shownPath = activePath && !live ? activePath : null;
   const works = pathWorks ?? dedupeById([...result.artworks, ...extra]);
   const total = pathWorks ? pathWorks.length : result.total;
   const [hasInput, setHasInput] = useState(Boolean(query));
@@ -147,11 +154,11 @@ function Explore() {
   const canLoadMore =
     isClient &&
     live &&
-    !activePath &&
+    !shownPath &&
     remaining > 0 &&
     page < SEARCH_MAX_PAGE &&
     result.status !== "error";
-  const atCap = live && !activePath && remaining > 0 && page >= SEARCH_MAX_PAGE;
+  const atCap = live && !shownPath && remaining > 0 && page >= SEARCH_MAX_PAGE;
 
   useEffect(() => setHasInput(Boolean(query)), [query]);
   useEffect(() => setIsClient(true), []);
@@ -270,26 +277,32 @@ function Explore() {
       <section className="explore-heading" aria-labelledby="explore-title">
         <div>
           <span className="eyebrow">
-            {activePath
+            {shownPath
               ? "Curated path"
-              : liveDepartmentName
-                ? "Department"
-                : "The working index"}
+              : query
+                ? "Search"
+                : liveDepartmentName
+                  ? "Department"
+                  : "The working index"}
           </span>
           <h1 id="explore-title">
-            {activePath
-              ? activePath.title
-              : liveDepartmentName
-                ? liveDepartmentName
-                : "Explore the collection."}
+            {shownPath
+              ? shownPath.title
+              : query
+                ? `“${query}”`
+                : liveDepartmentName
+                  ? liveDepartmentName
+                  : "Explore the collection."}
           </h1>
         </div>
         <p>
-          {activePath
-            ? activePath.description
-            : liveDepartmentName
-              ? "A public-domain, image-backed page from this department. Load more to keep reading the index."
-              : "Search by artist, title, or object language. The first view is a review set; typed searches and department chips open the live Open Access collection."}
+          {shownPath
+            ? shownPath.description
+            : query
+              ? "Live results from the Open Access collection."
+              : liveDepartmentName
+                ? "A public-domain, image-backed page from this department. Load more to keep reading the index."
+                : "Search by artist, title, or object language. The first view is a review set; typed searches and department chips open the live Open Access collection."}
         </p>
       </section>
 
