@@ -76,8 +76,9 @@ Use this order when instructions disagree:
 - Local tag `legacy-2023` identifies that baseline. Do not move or delete it.
 - Remote `master` and `main` are historical state. Do not force-push, delete,
   merge, or rename remote branches without Sergi's approval.
-- The active rebuild branch is `redesign` until the owner chooses the final
-  default-branch strategy.
+- `main` is the active trunk; the old `redesign` rebuild branch was
+  deleted 09-09 (29 behind, 0 unique commits). Legacy `master`/`main`
+  history stays untouched.
 - Preserve the old work through Git history; do not carry legacy architecture
   into the new app merely to avoid replacing it.
 

@@ -13,7 +13,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "corepack pnpm run dev",
+    command: "pnpm run dev",
     env: { MET_API_MODE: "fixture" },
     url: "http://127.0.0.1:3180",
     reuseExistingServer: !process.env.CI,
