@@ -135,6 +135,9 @@ function Explore() {
         : undefined;
   const [extra, setExtra] = useState<Artwork[]>([]);
   const [isFilling, setIsFilling] = useState(false);
+  // A failed tail-fill page used to escape as an unhandled rejection and
+  // leave the grid silently stuck (devin 09-09 20:57 #1) — now it shows.
+  const [fillFailed, setFillFailed] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const pathWorks =
     activePath && !live
@@ -191,6 +194,7 @@ function Explore() {
   useEffect(() => {
     let cancelled = false;
     setExtra([]);
+    setFillFailed(false);
     if (page <= 1 || pathSlug || !live) {
       setIsFilling(false);
       return;
@@ -222,6 +226,14 @@ function Explore() {
             shouldContinue: () => !cancelled,
           },
         );
+      } catch (error) {
+        // A failed page used to escape as an unhandled rejection and
+        // leave the grid silently stuck at whatever had loaded
+        // (devin 09-09 20:57 #1). Keep what loaded; say the rest failed.
+        if (!cancelled) {
+          setFillFailed(true);
+          console.warn("[explore] tail-fill failed", error);
+        }
       } finally {
         if (!cancelled) setIsFilling(false);
       }
@@ -550,6 +562,12 @@ function Explore() {
                 {isFilling ? "Loading more…" : `Load ${nextCount} more`}
               </Button>
             </div>
+          ) : null}
+          {fillFailed ? (
+            <p className="explore-fill-failed" role="status">
+              Some pages failed to load — the grid shows what arrived. Load more
+              to try again.
+            </p>
           ) : null}
           {atCap ? (
             <p className="explore-cap">

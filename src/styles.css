@@ -1500,6 +1500,13 @@ img {
   text-align: center;
 }
 
+.explore-fill-failed {
+  margin: 1rem 0 0;
+  color: var(--archive);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
 .explore-paths {
   display: flex;
   align-items: baseline;
