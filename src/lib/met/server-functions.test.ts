@@ -80,7 +80,11 @@ describe("getArtwork", () => {
     expect(result.status).toBe("error");
     expect(result.source).toBe("fixture");
     expect(result.artwork).toBeNull();
-    expect(result.message).toMatch(/outside the deterministic review fixture/);
+    expect(result).toMatchObject({
+      message: expect.stringMatching(
+        /outside the deterministic review fixture/,
+      ),
+    });
     expect(fetchMetObject).not.toHaveBeenCalled();
   });
 
@@ -96,7 +100,9 @@ describe("getArtwork", () => {
     expect(failed.status).toBe("error");
     expect(failed.source).toBe("met");
     expect(failed.artwork).toBeNull();
-    expect(failed.message).toContain("Met object record");
+    expect(failed).toMatchObject({
+      message: expect.stringContaining("Met object record"),
+    });
   });
 });
 
@@ -116,7 +122,9 @@ describe("listDepartments", () => {
     expect(result.status).toBe("error");
     expect(result.source).toBe("fixture");
     expect(result.departments).toEqual(metDepartments);
-    expect(result.message).toContain("Met department index");
+    expect(result).toMatchObject({
+      message: expect.stringContaining("Met department index"),
+    });
   });
 
   it("serves the live department index on success", async () => {
