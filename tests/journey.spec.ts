@@ -118,7 +118,7 @@ test("Curated paths narrow the review set", async ({ page }) => {
   await expect(page.locator(".explore-count")).toHaveText("3 / 3 review works");
   await expect(page.locator(".artwork-card")).toHaveCount(3);
   await expect(
-    page.getByRole("link", { name: /Return to all works/ }),
+    page.getByRole("link", { name: /Return to review set/ }),
   ).toBeVisible();
 });
 
