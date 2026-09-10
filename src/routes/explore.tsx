@@ -24,6 +24,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { curatedPaths } from "@/data/curated-artworks";
 import {
   departmentNameById,
+  type ExploreDepartmentFilter,
   exploreDepartmentFilters,
   exploreDepartmentSchema,
   isExploreDepartmentFilter,
@@ -169,7 +170,6 @@ function Explore() {
   const shownPath = activePath && !live ? activePath : null;
   const works = pathWorks ?? dedupeById([...result.artworks, ...extra]);
   const total = pathWorks ? pathWorks.length : result.total;
-  const [hasInput, setHasInput] = useState(Boolean(query));
   const remaining = Math.max(0, total - works.length);
   const nextCount = Math.min(SEARCH_PAGE_SIZE, remaining);
   const canLoadMore =
@@ -182,7 +182,6 @@ function Explore() {
     result.status !== "error";
   const atCap = live && !shownPath && remaining > 0 && page >= SEARCH_MAX_PAGE;
 
-  useEffect(() => setHasInput(Boolean(query)), [query]);
   useEffect(() => setIsClient(true), []);
 
   useEffect(() => {
@@ -275,22 +274,6 @@ function Explore() {
     };
   }, [page, query, activeDepartment, departmentId, pathSlug, live]);
 
-  function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formInput =
-      event.currentTarget.querySelector<HTMLInputElement>('input[name="q"]');
-    const submittedQuery = String(formInput?.value ?? "").trim();
-    void navigate({
-      search: {
-        q: submittedQuery || undefined,
-        department: activeDepartment === "all" ? undefined : activeDepartment,
-        path: undefined,
-        departmentId: undefined,
-        page: undefined,
-      },
-    });
-  }
-
   function changeDepartment(nextValues: string[]) {
     const nextDepartment = nextValues[0];
     if (!isExploreDepartmentFilter(nextDepartment)) return;
@@ -352,52 +335,11 @@ function Explore() {
       </section>
 
       <search aria-label="Search the collection">
-        <form className="search-form" onSubmit={submit}>
-          <FieldGroup className="search-field-group">
-            <Field orientation="horizontal" className="search-field">
-              <FieldLabel className="sr-only" htmlFor="collection-search">
-                Search the collection
-              </FieldLabel>
-              <SearchIcon />
-              <Input
-                id="collection-search"
-                name="q"
-                key={query}
-                defaultValue={query}
-                maxLength={120}
-                onInput={(event) =>
-                  setHasInput(Boolean(event.currentTarget.value))
-                }
-                placeholder="Try “van Gogh”, “waves”, or “portraits”"
-                type="search"
-              />
-              {hasInput ? (
-                <button
-                  type="button"
-                  className="search-clear-btn"
-                  onClick={(event) => {
-                    const form = event.currentTarget.closest("form");
-                    const input =
-                      form?.querySelector<HTMLInputElement>('input[name="q"]');
-                    if (input) {
-                      input.value = "";
-                      input.focus();
-                    }
-                    setHasInput(false);
-                  }}
-                  aria-label="Clear"
-                >
-                  <CloseIcon />
-                </button>
-              ) : (
-                <kbd className="search-shortcut mono">/</kbd>
-              )}
-            </Field>
-          </FieldGroup>
-          <Button type="submit" size="lg" className="search-submit">
-            Search
-          </Button>
-        </form>
+        <ExploreSearchForm
+          query={query}
+          activeDepartment={activeDepartment}
+          withClearControls
+        />
       </search>
 
       <div className="explore-tools">
@@ -642,7 +584,6 @@ function Explore() {
 }
 
 function ExplorePending() {
-  const navigate = useNavigate({ from: "/explore" });
   const { q, department, departmentId } = useSearch({ from: "/explore" });
   // Trimmed like Explore below — the input key/defaultValue must match
   // across the pending→main transition or the field remounts with a
@@ -655,22 +596,6 @@ function ExplorePending() {
       : departmentId !== undefined
         ? departmentNameById(departmentId)
         : undefined;
-
-  function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formInput =
-      event.currentTarget.querySelector<HTMLInputElement>('input[name="q"]');
-    const submittedQuery = String(formInput?.value ?? "").trim();
-    void navigate({
-      search: {
-        q: submittedQuery || undefined,
-        department: activeDepartment === "all" ? undefined : activeDepartment,
-        path: undefined,
-        departmentId: undefined,
-        page: undefined,
-      },
-    });
-  }
 
   return (
     <main className="page-frame explore-page" aria-busy="true">
@@ -686,28 +611,7 @@ function ExplorePending() {
         <p>Fetching a bounded page of open-access records.</p>
       </section>
       <search aria-label="Search the collection">
-        <form className="search-form" onSubmit={submit}>
-          <FieldGroup className="search-field-group">
-            <Field orientation="horizontal" className="search-field">
-              <FieldLabel className="sr-only" htmlFor="collection-search">
-                Search the collection
-              </FieldLabel>
-              <SearchIcon />
-              <Input
-                id="collection-search"
-                name="q"
-                key={query}
-                defaultValue={query}
-                maxLength={120}
-                placeholder="Try “van Gogh”, “waves”, or “portraits”"
-                type="search"
-              />
-            </Field>
-          </FieldGroup>
-          <Button type="submit" size="lg" className="search-submit">
-            Search
-          </Button>
-        </form>
+        <ExploreSearchForm query={query} activeDepartment={activeDepartment} />
       </search>
       <div className="collection-loading">
         <div className="collection-loading__heading">
@@ -732,5 +636,92 @@ function ExplorePending() {
         </p>
       </div>
     </main>
+  );
+}
+
+// One search form for Explore and ExplorePending — the pending screen
+// used to carry a verbatim copy of the submit handler and field JSX, so
+// every search-behavior change had to be made twice (devin 09-10
+// 12:50 #5).
+function ExploreSearchForm({
+  query,
+  activeDepartment,
+  withClearControls = false,
+}: {
+  query: string;
+  activeDepartment: ExploreDepartmentFilter;
+  withClearControls?: boolean;
+}) {
+  const navigate = useNavigate({ from: "/explore" });
+  const [hasInput, setHasInput] = useState(Boolean(query));
+  useEffect(() => setHasInput(Boolean(query)), [query]);
+
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formInput =
+      event.currentTarget.querySelector<HTMLInputElement>('input[name="q"]');
+    const submittedQuery = String(formInput?.value ?? "").trim();
+    void navigate({
+      search: {
+        q: submittedQuery || undefined,
+        department: activeDepartment === "all" ? undefined : activeDepartment,
+        path: undefined,
+        departmentId: undefined,
+        page: undefined,
+      },
+    });
+  }
+
+  return (
+    <form className="search-form" onSubmit={submit}>
+      <FieldGroup className="search-field-group">
+        <Field orientation="horizontal" className="search-field">
+          <FieldLabel className="sr-only" htmlFor="collection-search">
+            Search the collection
+          </FieldLabel>
+          <SearchIcon />
+          <Input
+            id="collection-search"
+            name="q"
+            key={query}
+            defaultValue={query}
+            maxLength={120}
+            onInput={
+              withClearControls
+                ? (event) => setHasInput(Boolean(event.currentTarget.value))
+                : undefined
+            }
+            placeholder="Try “van Gogh”, “waves”, or “portraits”"
+            type="search"
+          />
+          {withClearControls ? (
+            hasInput ? (
+              <button
+                type="button"
+                className="search-clear-btn"
+                onClick={(event) => {
+                  const form = event.currentTarget.closest("form");
+                  const input =
+                    form?.querySelector<HTMLInputElement>('input[name="q"]');
+                  if (input) {
+                    input.value = "";
+                    input.focus();
+                  }
+                  setHasInput(false);
+                }}
+                aria-label="Clear"
+              >
+                <CloseIcon />
+              </button>
+            ) : (
+              <kbd className="search-shortcut mono">/</kbd>
+            )
+          ) : null}
+        </Field>
+      </FieldGroup>
+      <Button type="submit" size="lg" className="search-submit">
+        Search
+      </Button>
+    </form>
   );
 }
