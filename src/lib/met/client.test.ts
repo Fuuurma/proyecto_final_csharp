@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearMetCache } from "./cache";
 import {
   fetchMetDepartments,
   fetchMetObject,
   fetchMetObjects,
   fetchMetSearchIds,
+  MAX_CACHED_SEARCH_IDS,
   SEARCH_PAGE_SIZE,
   sliceSearchPage,
 } from "./client.server";
@@ -171,5 +172,63 @@ describe("Met API adapter", () => {
 
     const artwork = await fetchMetObject(999999, { fetcher: rawFetcher });
     expect(artwork.displayTitle).toBe("Some other object");
+  });
+});
+
+// The ID-list cache must refuse oversize listings (devin 09-10 12:50 P1):
+// MAX_ENTRIES bounds keys, not weight — an unbounded value lets one
+// whole-department or q=* listing dominate the Worker isolate.
+describe("fetchMetSearchIds cache value bound", () => {
+  afterEach(() => {
+    clearMetCache();
+    vi.unstubAllGlobals();
+  });
+
+  function listingFetch(total: number, ids: number[]) {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return response({ total, objectIDs: ids });
+    };
+    return { fetcher, calls: () => calls };
+  }
+
+  it("caches listings up to the bound — second request skips upstream", async () => {
+    const ids = Array.from({ length: MAX_CACHED_SEARCH_IDS }, (_, i) => i + 1);
+    const { fetcher, calls } = listingFetch(ids.length, ids);
+    vi.stubGlobal("fetch", fetcher);
+
+    const first = await fetchMetSearchIds("bound-under");
+    const second = await fetchMetSearchIds("bound-under");
+
+    expect(calls()).toBe(1);
+    expect(second.objectIds).toEqual(first.objectIds);
+  });
+
+  it("skips the cache above the bound — every request hits upstream", async () => {
+    const ids = Array.from(
+      { length: MAX_CACHED_SEARCH_IDS + 1 },
+      (_, i) => i + 1,
+    );
+    const { fetcher, calls } = listingFetch(ids.length, ids);
+    vi.stubGlobal("fetch", fetcher);
+
+    await fetchMetSearchIds("bound-over");
+    await fetchMetSearchIds("bound-over");
+
+    expect(calls()).toBe(2);
+  });
+
+  it("serving uncached oversize listings still returns them whole", async () => {
+    const ids = Array.from(
+      { length: MAX_CACHED_SEARCH_IDS + 1 },
+      (_, i) => i + 1,
+    );
+    const { fetcher } = listingFetch(ids.length, ids);
+    vi.stubGlobal("fetch", fetcher);
+
+    const result = await fetchMetSearchIds("bound-over-whole");
+    expect(result.objectIds).toHaveLength(MAX_CACHED_SEARCH_IDS + 1);
+    expect(result.total).toBe(ids.length);
   });
 });

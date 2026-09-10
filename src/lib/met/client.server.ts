@@ -159,6 +159,10 @@ export async function fetchMetDepartments(
   return departments;
 }
 
+/** ID-list entries above this size skip the cache: generous for any
+ * real paging session (page size 24), small against a 128MB isolate. */
+export const MAX_CACHED_SEARCH_IDS = 20_000;
+
 export async function fetchMetSearchIds(
   query: string,
   options: {
@@ -232,7 +236,16 @@ export async function fetchMetSearchIds(
   const objectIds = parsed.data.objectIDs ?? [];
   const result = { total: parsed.data.total, objectIds, preFiltered };
 
-  if (useCache) setCached(cacheKey, result, CACHE_TTL_MS.search);
+  // Value-size bound: MAX_ENTRIES bounds the cache by KEY count, not
+  // weight — a whole-department /objects listing (~100k ids) or a bare
+  // q=* search (~470k ids) would ride in as a single entry, and a burst
+  // of large listings pressures the Worker isolate's memory (devin
+  // 09-10 12:50 P1). Oversize listings still serve, just uncached: the
+  // 60s TTL would forget them mid-paging anyway, and refetching is the
+  // same upstream cost the no-cache path always paid.
+  if (useCache && objectIds.length <= MAX_CACHED_SEARCH_IDS) {
+    setCached(cacheKey, result, CACHE_TTL_MS.search);
+  }
   return options.limit === undefined
     ? result
     : { ...result, objectIds: objectIds.slice(0, options.limit) };
