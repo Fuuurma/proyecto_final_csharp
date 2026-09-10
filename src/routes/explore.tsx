@@ -329,7 +329,9 @@ function Explore() {
             : query
               ? result.source === "met"
                 ? "Live results from the Open Access collection."
-                : "Fixture results from the committed review set."
+                : result.source === "fixture"
+                  ? "Fixture results from the committed review set."
+                  : "Committed works from this room while the live collection answers."
               : liveDepartmentName
                 ? "A public-domain, image-backed page from this department. Load more to keep reading the index."
                 : "Search by artist, title, or object language. The first view is a review set; typed searches and department chips open the live Open Access collection."}
@@ -340,6 +342,7 @@ function Explore() {
         <ExploreSearchForm
           query={query}
           activeDepartment={activeDepartment}
+          activeDepartmentId={departmentId}
           withClearControls
         />
       </search>
@@ -351,7 +354,7 @@ function Explore() {
             aria-label="Department"
             className="department-toggle-group"
             onValueChange={changeDepartment}
-            value={[activeDepartment]}
+            value={departmentId !== undefined ? [] : [activeDepartment]}
             variant="outline"
             spacing={0}
           >
@@ -613,7 +616,11 @@ function ExplorePending() {
         <p>Fetching a bounded page of open-access records.</p>
       </section>
       <search aria-label="Search the collection">
-        <ExploreSearchForm query={query} activeDepartment={activeDepartment} />
+        <ExploreSearchForm
+          query={query}
+          activeDepartment={activeDepartment}
+          activeDepartmentId={departmentId}
+        />
       </search>
       <div className="collection-loading">
         <div className="collection-loading__heading">
@@ -648,10 +655,12 @@ function ExplorePending() {
 function ExploreSearchForm({
   query,
   activeDepartment,
+  activeDepartmentId,
   withClearControls = false,
 }: {
   query: string;
   activeDepartment: ExploreDepartmentFilter;
+  activeDepartmentId?: number;
   withClearControls?: boolean;
 }) {
   const navigate = useNavigate({ from: "/explore" });
@@ -666,9 +675,18 @@ function ExploreSearchForm({
     void navigate({
       search: {
         q: submittedQuery || undefined,
-        department: activeDepartment === "all" ? undefined : activeDepartment,
+        // Only `path` is cleared on submit — a department restriction
+        // (chip name or departments-ledger id) persists into the search
+        // view (needs-work survey 09-10 19:33 #1; live-search spec
+        // 2026-08-13:71).
+        department:
+          activeDepartmentId !== undefined
+            ? undefined
+            : activeDepartment === "all"
+              ? undefined
+              : activeDepartment,
         path: undefined,
-        departmentId: undefined,
+        departmentId: activeDepartmentId,
         page: undefined,
       },
     });
