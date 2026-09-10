@@ -1571,7 +1571,6 @@ img {
 .result-alert {
   margin-top: 1.25rem;
   border-color: var(--rule);
-  border-left: 2px solid var(--red);
   border-radius: 0;
   background: var(--paper-deep);
 }
