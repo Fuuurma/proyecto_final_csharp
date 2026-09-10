@@ -217,6 +217,10 @@ img {
 }
 
 .site-header {
+  /* Sticky children (collection-index intro) offset from this token —
+     keep it in sync with the inner min-heights below (grok 09-10
+     18:45 #3: the intro stuck 44px under the header). */
+  --header-h: 76px;
   position: sticky;
   top: 0;
   z-index: 40;
@@ -231,7 +235,7 @@ img {
   align-items: center;
   gap: 2rem;
   width: min(100% - 3rem, 1440px);
-  min-height: 76px;
+  min-height: var(--header-h);
   margin-inline: auto;
 }
 
@@ -784,7 +788,7 @@ img {
 .collection-index__intro {
   align-self: start;
   position: sticky;
-  top: 2rem;
+  top: calc(var(--header-h) + 1rem);
 }
 
 .collection-index__intro h2 {
@@ -2887,9 +2891,13 @@ img {
     width: min(100% - 2rem, 1440px);
   }
 
+  .site-header {
+    --header-h: 68px;
+  }
+
   .site-header__inner {
     grid-template-columns: 1fr auto;
-    min-height: 68px;
+    min-height: var(--header-h);
   }
 
   .site-header__note {
@@ -2897,7 +2905,10 @@ img {
   }
 
   .site-nav {
-    gap: 1rem;
+    gap: 0.65rem 1rem;
+    /* Four links + wordmark overflowed 375px on one line — wrap
+       instead of trimming access (grok 09-10 18:45 #4). */
+    flex-wrap: wrap;
   }
 
   .site-nav__link {
