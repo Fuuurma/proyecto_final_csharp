@@ -28,7 +28,11 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { curatedArtworks, featuredArtwork } from "@/data/curated-artworks";
-import { type SelectionItem, useSelection } from "@/lib/selection";
+import {
+  artworkFromSelectionItem,
+  type SelectionItem,
+  useSelection,
+} from "@/lib/selection";
 import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
@@ -177,9 +181,14 @@ function Selection() {
                   >
                     {artwork ? (
                       <ArtworkImage artwork={artwork} />
-                    ) : item.primaryImageSmall ? (
-                      <img src={item.primaryImageSmall} alt="" />
-                    ) : null}
+                    ) : (
+                      // Offline/no-hydrated fallback: reconstruct from the
+                      // stored item so the small->large image fallback and
+                      // the honest missing panel still apply (glm-5-2
+                      // 09-10 14:57 #4 — a primaryImage-only save used to
+                      // render a blank slot).
+                      <ArtworkImage artwork={artworkFromSelectionItem(item)} />
+                    )}
                   </Link>
                   <div className="selection-row__meta">
                     <span className="selection-row__index mono">

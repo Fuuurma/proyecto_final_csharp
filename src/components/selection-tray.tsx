@@ -35,8 +35,11 @@ export function SelectionTray() {
               className="selection-tray__thumb"
               style={{ aspectRatio: item.imageAspectRatio }}
             >
-              {item.primaryImageSmall ? (
-                <img src={item.primaryImageSmall} alt="" />
+              {(item.primaryImageSmall ?? item.primaryImage) ? (
+                <img
+                  src={(item.primaryImageSmall ?? item.primaryImage)!}
+                  alt=""
+                />
               ) : null}
             </span>
           ))}
