@@ -44,7 +44,7 @@ import { cn } from "@/lib/utils";
 const refillCache: PageCache<Artwork> = new Map();
 
 const exploreSearchSchema = z.object({
-  q: z.string().optional(),
+  q: z.string().max(120).optional(),
   department: exploreDepartmentSchema.optional(),
   path: z.string().optional(),
   departmentId: z.coerce.number().int().positive().optional(),
@@ -345,6 +345,7 @@ function Explore() {
                 name="q"
                 key={query}
                 defaultValue={query}
+                maxLength={120}
                 onInput={(event) =>
                   setHasInput(Boolean(event.currentTarget.value))
                 }

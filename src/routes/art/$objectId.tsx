@@ -570,19 +570,23 @@ function ShareButton({ artwork }: { artwork: Artwork }) {
       typeof window !== "undefined"
         ? window.location.href
         : artwork.canonicalUrl;
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      try {
-        await navigator.clipboard.writeText(url);
-        setCopied(true);
-        setCopyFailed(false);
-        setTimeout(() => setCopied(false), 2200);
-      } catch {
-        // Surface the failure — a silent no-op button hides it
-        // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
-        setCopied(false);
-        setCopyFailed(true);
-        setTimeout(() => setCopyFailed(false), 2200);
-      }
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      // Absent API (insecure context): say so instead of a silent no-op
+      // (devin 09-09 22:57 clipboard bundle).
+      setCopyFailed(true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setCopyFailed(false);
+      setTimeout(() => setCopied(false), 2200);
+    } catch {
+      // Surface the failure — a silent no-op button hides it
+      // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
+      setCopied(false);
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 2200);
     }
   }
 

@@ -256,19 +256,23 @@ function CopyListButton({ items }: { items: SelectionItem[] }) {
       )
       .join("\n");
 
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setCopyFailed(false);
-        setTimeout(() => setCopied(false), 2200);
-      } catch {
-        // Surface the failure instead of a silent no-op
-        // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
-        setCopied(false);
-        setCopyFailed(true);
-        setTimeout(() => setCopyFailed(false), 2200);
-      }
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      // Absent API (insecure context): surface it instead of a silent no-op
+      // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
+      setCopyFailed(true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setCopyFailed(false);
+      setTimeout(() => setCopied(false), 2200);
+    } catch {
+      // Surface the failure instead of a silent no-op
+      // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
+      setCopied(false);
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 2200);
     }
   }
 
