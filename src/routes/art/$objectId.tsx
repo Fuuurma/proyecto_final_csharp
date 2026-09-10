@@ -37,6 +37,7 @@ import {
 } from "@/lib/met/server-functions";
 import { getRelatedArtworks } from "@/lib/related";
 import { artworkFromSelectionItem, useSelection } from "@/lib/selection";
+import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/art/$objectId")({
@@ -562,32 +563,14 @@ function ImageLightboxStage({ src, alt }: { src: string; alt: string }) {
 }
 
 function ShareButton({ artwork }: { artwork: Artwork }) {
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
+  const { copied, copyFailed, copy } = useCopyToClipboard(2200);
 
   async function handleShare() {
     const url =
       typeof window !== "undefined"
         ? window.location.href
         : artwork.canonicalUrl;
-    if (typeof navigator === "undefined" || !navigator.clipboard) {
-      // Absent API (insecure context): say so instead of a silent no-op
-      // (devin 09-09 22:57 clipboard bundle).
-      setCopyFailed(true);
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setCopyFailed(false);
-      setTimeout(() => setCopied(false), 2200);
-    } catch {
-      // Surface the failure — a silent no-op button hides it
-      // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
-      setCopied(false);
-      setCopyFailed(true);
-      setTimeout(() => setCopyFailed(false), 2200);
-    }
+    await copy(url);
   }
 
   return (
@@ -704,32 +687,11 @@ function MetadataRow({
   mono?: boolean;
   copyable?: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
+  const { copied, copyFailed, copy } = useCopyToClipboard();
 
   async function handleCopy() {
     if (copyable && typeof value === "string") {
-      if (typeof navigator === "undefined" || !navigator.clipboard) {
-        // Absent API (insecure context): say so explicitly instead of
-        // riding a TypeError through the catch, matching ShareButton
-        // and CopyListButton (devin 09-10 12:50).
-        setCopied(false);
-        setCopyFailed(true);
-        setTimeout(() => setCopyFailed(false), 2000);
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(value);
-        setCopied(true);
-        setCopyFailed(false);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        // Surface the failure instead of a silent no-op
-        // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
-        setCopied(false);
-        setCopyFailed(true);
-        setTimeout(() => setCopyFailed(false), 2000);
-      }
+      await copy(value);
     }
   }
 

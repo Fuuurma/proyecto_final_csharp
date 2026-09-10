@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
 import { ArtworkImage } from "@/components/artwork-image";
 import {
   ArrowDownIcon,
@@ -30,6 +29,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { curatedArtworks, featuredArtwork } from "@/data/curated-artworks";
 import { type SelectionItem, useSelection } from "@/lib/selection";
+import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/selection")({
@@ -243,8 +243,7 @@ function Selection() {
 }
 
 function CopyListButton({ items }: { items: SelectionItem[] }) {
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
+  const { copied, copyFailed, copy } = useCopyToClipboard(2200);
 
   async function handleCopy() {
     const text = items
@@ -255,25 +254,7 @@ function CopyListButton({ items }: { items: SelectionItem[] }) {
           }${item.artist ? ` by ${item.artist}` : ""} — Met Object ${item.id} (https://www.metmuseum.org/art/collection/search/${item.id})`,
       )
       .join("\n");
-
-    if (typeof navigator === "undefined" || !navigator.clipboard) {
-      // Absent API (insecure context): surface it instead of a silent no-op
-      // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
-      setCopyFailed(true);
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setCopyFailed(false);
-      setTimeout(() => setCopied(false), 2200);
-    } catch {
-      // Surface the failure instead of a silent no-op
-      // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
-      setCopied(false);
-      setCopyFailed(true);
-      setTimeout(() => setCopyFailed(false), 2200);
-    }
+    await copy(text);
   }
 
   return (
