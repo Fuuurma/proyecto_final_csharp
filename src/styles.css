@@ -8,7 +8,7 @@
   --paper: #f3f1eb;
   --paper-deep: #e9e6dd;
   --ink: #1b1c19;
-  --archive: #70736e;
+  --archive: #5c5f58; /* was #70736e (~4.26:1 on paper) — AA needs 4.5 at the 9-13px sizes archive text runs (grok 09-10 18:45 #1) */
   --rule: #cfccc3;
   --red: #b3322f;
   --red-deep: #862725;
@@ -1132,10 +1132,17 @@ img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  opacity: 0;
+  /* Visible by default — a cached image or a missed onLoad must never
+     paint blank (grok 09-10 18:45 #5). The fade runs only while the
+     component flags is-loading. */
+  opacity: 1;
   transition:
     opacity 240ms ease,
     transform 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.artwork-image.is-loading img {
+  opacity: 0;
 }
 
 .artwork-image img.is-loaded {

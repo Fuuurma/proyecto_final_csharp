@@ -327,7 +327,9 @@ function Explore() {
           {shownPath
             ? shownPath.description
             : query
-              ? "Live results from the Open Access collection."
+              ? result.source === "met"
+                ? "Live results from the Open Access collection."
+                : "Fixture results from the committed review set."
               : liveDepartmentName
                 ? "A public-domain, image-backed page from this department. Load more to keep reading the index."
                 : "Search by artist, title, or object language. The first view is a review set; typed searches and department chips open the live Open Access collection."}
