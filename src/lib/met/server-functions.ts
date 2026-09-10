@@ -197,30 +197,10 @@ export const searchCollection = createServerFn({ method: "GET" })
         concurrency: 4,
       });
       const artworks = takeOpenAccessPage(hydrated);
-      if (artworks.length === 0) {
-        // /objects branch (preFiltered=false): nothing was promised, so a
-        // zero-usable window is the designed sieve at work — honest empty,
-        // no curated substitution, no outage message (devin 09-10 08:10).
-        if (!search.preFiltered) {
-          const deptName =
-            (mappedDepartmentId !== undefined
-              ? departmentNameById(mappedDepartmentId)
-              : undefined) ?? mappedDepartment;
-          return {
-            status: "empty",
-            source: "met",
-            query: q,
-            department: deptName,
-            departmentId: mappedDepartmentId,
-            total: search.total,
-            preFiltered: false,
-            artworks: [],
-            message: `No open-access works found in this window of ${deptName}.`,
-          };
-        }
-        // /search branch: the params WERE honoured, so zero usable rows
-        // means the promised rows did not deliver — degrade to the
-        // curated review set with the honest degradation notice.
+
+      // Genuine hydration failures: some promised rows did not deliver.
+      // Degrade to the curated review set with the honest notice.
+      if (hydrated.length < pageIds.length) {
         const fallback = curatedSearchResult(
           q,
           mappedDepartment === missingDepartmentFilter
@@ -240,6 +220,25 @@ export const searchCollection = createServerFn({ method: "GET" })
               "The live Met collection is answering slowly. Showing committed works from this room.",
           };
         }
+      }
+
+      // Fully hydrated, zero usable after the sieve: genuinely no
+      // open-access matches — honest empty (devin 09-10 08:10 / 06:57).
+      if (artworks.length === 0) {
+        return {
+          status: "empty",
+          source: "met",
+          query: q,
+          department:
+            (mappedDepartmentId !== undefined
+              ? departmentNameById(mappedDepartmentId)
+              : undefined) ?? mappedDepartment,
+          departmentId: mappedDepartmentId,
+          total: search.total,
+          preFiltered: search.preFiltered,
+          artworks: [],
+          message: "No open-access works matched this search.",
+        };
       }
 
       // Outcome semantics live in computeSearchStatus — pinned across all
