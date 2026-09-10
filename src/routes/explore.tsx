@@ -394,7 +394,7 @@ function Explore() {
           >
             {exploreDepartmentFilters.map((option) => (
               <ToggleGroupItem key={option} value={option}>
-                {option === "all" ? "All works" : option}
+                {option === "all" ? "All departments" : option}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
@@ -413,7 +413,7 @@ function Explore() {
         departmentId !== undefined ||
         activeDepartment !== "all" ? (
           <Link to="/explore" search={{}} className="text-link explore-clear">
-            Return to all works <span aria-hidden="true">↗</span>
+            Return to review set <span aria-hidden="true">↗</span>
           </Link>
         ) : null}
       </div>

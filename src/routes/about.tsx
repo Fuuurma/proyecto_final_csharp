@@ -82,7 +82,11 @@ function About() {
             intact image proportions, local selections, and metadata that tells
             you when a field is missing instead of filling the silence.
           </p>
-          <Link to="/explore" className="text-link">
+          <Link
+            to="/explore"
+            search={{ path: "van-gogh-late-light" }}
+            className="text-link"
+          >
             Explore a curated path <span aria-hidden="true">→</span>
           </Link>
           <Link to="/departments" className="text-link">

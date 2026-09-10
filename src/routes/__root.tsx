@@ -4,7 +4,9 @@ import {
   Link,
   Outlet,
   Scripts,
+  useLocation,
 } from "@tanstack/react-router";
+import { footerCues } from "@/lib/footer-cues";
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/newsreader";
 import "@fontsource/dm-mono/400.css";
@@ -127,6 +129,8 @@ function RouteError({ error }: { error: Error }) {
 }
 
 function RootLayout() {
+  const { pathname } = useLocation();
+  const cues = footerCues(pathname);
   return (
     <SelectionProvider>
       <a href="#main-content" className="skip-link">
@@ -155,24 +159,26 @@ function RootLayout() {
             Collection source <span aria-hidden="true">↗</span>
           </a>
         </div>
-        <section className="site-footer__cues" aria-label="Keyboard shortcuts">
-          <span className="eyebrow">Ledger shortcuts</span>
-          <ul className="cue-list">
-            <li>
-              <kbd className="cue-key">/</kbd>
-              <span>Focus Explore search</span>
-            </li>
-            <li>
-              <kbd className="cue-key">←</kbd>
-              <kbd className="cue-key">→</kbd>
-              <span>Flip object records</span>
-            </li>
-            <li>
-              <kbd className="cue-key">Esc</kbd>
-              <span>Close inspection</span>
-            </li>
-          </ul>
-        </section>
+        {cues.length > 0 ? (
+          <section
+            className="site-footer__cues"
+            aria-label="Keyboard shortcuts"
+          >
+            <span className="eyebrow">Ledger shortcuts</span>
+            <ul className="cue-list">
+              {cues.map((cue) => (
+                <li key={cue.label}>
+                  {cue.keys.map((key) => (
+                    <kbd key={key} className="cue-key">
+                      {key}
+                    </kbd>
+                  ))}
+                  <span>{cue.label}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </footer>
     </SelectionProvider>
   );
