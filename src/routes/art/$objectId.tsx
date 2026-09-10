@@ -598,7 +598,9 @@ function ShareButton({ artwork }: { artwork: Artwork }) {
       <span data-icon="inline-start">
         {copied ? <CheckIcon /> : <ShareIcon />}
       </span>
-      <span>{copyFailed ? "Copy failed" : copied ? "Copied link" : "Share"}</span>
+      <span>
+        {copyFailed ? "Copy failed" : copied ? "Copied link" : "Share"}
+      </span>
     </Button>
   );
 }
@@ -727,8 +729,14 @@ function MetadataRow({
             type="button"
             className="metadata-row__copy-btn"
             onClick={handleCopy}
-            title={copyFailed ? "Copy failed — try again" : "Click to copy accession number"}
-            aria-label={copyFailed ? "Copy failed, try again" : "Copy to clipboard"}
+            title={
+              copyFailed
+                ? "Copy failed — try again"
+                : "Click to copy accession number"
+            }
+            aria-label={
+              copyFailed ? "Copy failed, try again" : "Copy to clipboard"
+            }
           >
             <span>{value}</span>
             {copied ? (
