@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { Artwork } from "@/lib/met/normalize";
 
 type ArtworkImageProps = {
@@ -41,6 +41,24 @@ export function ArtworkImage({
     (candidate) => !failedSources.includes(candidate),
   );
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+
+  // A cached image can finish before React attaches onLoad (SSR
+  // hydration race) — then it would sit hidden behind is-loading
+  // forever (quick-critic 09-10 17:4x, hardening grok 18:45 #5).
+  // Mark it loaded from the element itself, before paint.
+  useLayoutEffect(() => {
+    const img = imageRef.current;
+    if (
+      source &&
+      img &&
+      img.complete &&
+      img.naturalWidth > 0 &&
+      loadedSrc === null
+    ) {
+      setLoadedSrc(source);
+    }
+  }, [source, loadedSrc]);
 
   const imageStyle: CSSProperties =
     layout === "ratio"
@@ -54,6 +72,7 @@ export function ArtworkImage({
     >
       {source ? (
         <img
+          ref={imageRef}
           src={source}
           alt={`${artwork.displayTitle}${artwork.artist ? `, ${artwork.artist}` : ""}`}
           loading={eager ? "eager" : "lazy"}

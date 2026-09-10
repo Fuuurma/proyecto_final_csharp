@@ -100,3 +100,43 @@ describe("ArtworkImage", () => {
     expect(img.getAttribute("alt")).toContain("Wheat Field with Cypresses");
   });
 });
+
+describe("ArtworkImage cached-image race", () => {
+  afterEach(() => {
+    // Restore the jsdom defaults the stub overrides.
+    const proto = HTMLImageElement.prototype;
+    delete (proto as { complete?: unknown }).complete;
+    delete (proto as { naturalWidth?: unknown }).naturalWidth;
+    cleanup();
+  });
+
+  it("marks a completed cached image loaded on mount, not stuck loading", () => {
+    // Simulate an image that finished before React attached onLoad —
+    // the SSR hydration race (grok 18:45 #5 hardened).
+    Object.defineProperty(HTMLImageElement.prototype, "complete", {
+      get: () => true,
+      configurable: true,
+    });
+    Object.defineProperty(HTMLImageElement.prototype, "naturalWidth", {
+      get: () => 640,
+      configurable: true,
+    });
+
+    const { container } = render(<ArtworkImage artwork={makeArtwork()} />);
+    const figure = container.querySelector(".artwork-image");
+    expect(figure?.className).not.toContain("is-loading");
+    expect(container.querySelector("img.is-loaded")).toBeTruthy();
+  });
+
+  it("keeps the loading state for an image that has not finished", () => {
+    Object.defineProperty(HTMLImageElement.prototype, "complete", {
+      get: () => false,
+      configurable: true,
+    });
+
+    const { container } = render(<ArtworkImage artwork={makeArtwork()} />);
+    expect(container.querySelector(".artwork-image")?.className).toContain(
+      "is-loading",
+    );
+  });
+});
