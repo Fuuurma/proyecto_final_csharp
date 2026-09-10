@@ -22,4 +22,13 @@ describe("explore counter honesty", () => {
     expect(exploreSource).toContain("in the index");
     expect(exploreSource).toContain("loaded");
   });
+
+  // Sparse live results kept offering 'Load 24 more' through fill
+  // windows that yielded zero new usable works, up to the record cap
+  // (quick-critic 09-10 14:4x). Two consecutive zero-yield windows must
+  // end the offer with an honest note.
+  it("ends the load-more offer after consecutive zero-yield fill windows", () => {
+    expect(exploreSource).toContain("!fillExhausted");
+    expect(exploreSource).toContain("No further open-access works surfaced");
+  });
 });

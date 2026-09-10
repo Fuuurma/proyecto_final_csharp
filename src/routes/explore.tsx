@@ -138,6 +138,12 @@ function Explore() {
   // A failed tail-fill page used to escape as an unhandled rejection and
   // leave the grid silently stuck (devin 09-09 20:57 #1) — now it shows.
   const [fillFailed, setFillFailed] = useState(false);
+  // Two consecutive fill windows with zero NEW usable works is a
+  // strong end-of-usable signal for a sparse result: the button kept
+  // promising 'Load 24 more' while every delivered window sieved out
+  // (quick-critic 09-10 14:4x). Heuristic — the index total stays
+  // honest in the counter; this only stops offering empty loads.
+  const [fillExhausted, setFillExhausted] = useState(false);
   const [isClient, setIsClient] = useState(false);
   // Reset the previous search's tail-fill the moment the search identity
   // changes — adjusting state during render (the React-sanctioned
@@ -149,6 +155,7 @@ function Explore() {
     setPrevSearchKey(searchKey);
     setExtra([]);
     setFillFailed(false);
+    setFillExhausted(false);
   }
   const pathWorks =
     activePath && !live
@@ -169,6 +176,7 @@ function Explore() {
     isClient &&
     live &&
     !shownPath &&
+    !fillExhausted &&
     remaining > 0 &&
     page < SEARCH_MAX_PAGE &&
     result.status !== "error";
@@ -204,8 +212,11 @@ function Explore() {
 
   useEffect(() => {
     let cancelled = false;
+    let lastChunkLength = 0;
+    let zeroYieldWindows = 0;
     setExtra([]);
     setFillFailed(false);
+    setFillExhausted(false);
     if (page <= 1 || pathSlug || !live) {
       setIsFilling(false);
       return;
@@ -232,7 +243,15 @@ function Explore() {
           },
           {
             onChunk: (all) => {
-              if (!cancelled) setExtra([...all]);
+              if (cancelled) return;
+              if (all.length === lastChunkLength) {
+                zeroYieldWindows += 1;
+                if (zeroYieldWindows >= 2) setFillExhausted(true);
+              } else {
+                zeroYieldWindows = 0;
+              }
+              lastChunkLength = all.length;
+              setExtra([...all]);
             },
             shouldContinue: () => !cancelled,
           },
@@ -580,6 +599,12 @@ function Explore() {
               {atCap
                 ? "Some pages failed to load within the record cap — the grid shows what arrived."
                 : "Some pages failed to load — the grid shows what arrived. Load more to try again."}
+            </p>
+          ) : null}
+          {fillExhausted ? (
+            <p className="explore-fill-failed" role="status">
+              No further open-access works surfaced in the loaded records —
+              refine the search to look further.
             </p>
           ) : null}
           {atCap ? (
