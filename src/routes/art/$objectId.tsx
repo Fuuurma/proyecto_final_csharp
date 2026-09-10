@@ -563,6 +563,7 @@ function ImageLightboxStage({ src, alt }: { src: string; alt: string }) {
 
 function ShareButton({ artwork }: { artwork: Artwork }) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   async function handleShare() {
     const url =
@@ -573,9 +574,14 @@ function ShareButton({ artwork }: { artwork: Artwork }) {
       try {
         await navigator.clipboard.writeText(url);
         setCopied(true);
+        setCopyFailed(false);
         setTimeout(() => setCopied(false), 2200);
       } catch {
-        // clipboard error fallback
+        // Surface the failure — a silent no-op button hides it
+        // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
+        setCopied(false);
+        setCopyFailed(true);
+        setTimeout(() => setCopyFailed(false), 2200);
       }
     }
   }
@@ -592,7 +598,7 @@ function ShareButton({ artwork }: { artwork: Artwork }) {
       <span data-icon="inline-start">
         {copied ? <CheckIcon /> : <ShareIcon />}
       </span>
-      <span>{copied ? "Copied link" : "Share"}</span>
+      <span>{copyFailed ? "Copy failed" : copied ? "Copied link" : "Share"}</span>
     </Button>
   );
 }
@@ -693,15 +699,21 @@ function MetadataRow({
   copyable?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   async function handleCopy() {
     if (copyable && typeof value === "string") {
       try {
         await navigator.clipboard.writeText(value);
         setCopied(true);
+        setCopyFailed(false);
         setTimeout(() => setCopied(false), 2000);
       } catch {
-        // fallback
+        // Surface the failure instead of a silent no-op
+        // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
+        setCopied(false);
+        setCopyFailed(true);
+        setTimeout(() => setCopyFailed(false), 2000);
       }
     }
   }
@@ -715,7 +727,8 @@ function MetadataRow({
             type="button"
             className="metadata-row__copy-btn"
             onClick={handleCopy}
-            title="Click to copy accession number"
+            title={copyFailed ? "Copy failed — try again" : "Click to copy accession number"}
+            aria-label={copyFailed ? "Copy failed, try again" : "Copy to clipboard"}
           >
             <span>{value}</span>
             {copied ? (

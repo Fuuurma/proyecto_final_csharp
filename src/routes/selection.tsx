@@ -244,6 +244,7 @@ function Selection() {
 
 function CopyListButton({ items }: { items: SelectionItem[] }) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   async function handleCopy() {
     const text = items
@@ -259,9 +260,14 @@ function CopyListButton({ items }: { items: SelectionItem[] }) {
       try {
         await navigator.clipboard.writeText(text);
         setCopied(true);
+        setCopyFailed(false);
         setTimeout(() => setCopied(false), 2200);
       } catch {
-        // fallback
+        // Surface the failure instead of a silent no-op
+        // (devin 09-09 22:57 / 09-10 00:19 clipboard bundle).
+        setCopied(false);
+        setCopyFailed(true);
+        setTimeout(() => setCopyFailed(false), 2200);
       }
     }
   }
@@ -275,7 +281,7 @@ function CopyListButton({ items }: { items: SelectionItem[] }) {
       onClick={handleCopy}
       aria-label="Copy saved works list to clipboard"
     >
-      {copied ? "List copied" : "Copy list"}
+      {copyFailed ? "Copy failed" : copied ? "List copied" : "Copy list"}
     </Button>
   );
 }
