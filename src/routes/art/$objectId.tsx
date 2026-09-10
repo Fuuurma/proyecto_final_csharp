@@ -709,6 +709,15 @@ function MetadataRow({
 
   async function handleCopy() {
     if (copyable && typeof value === "string") {
+      if (typeof navigator === "undefined" || !navigator.clipboard) {
+        // Absent API (insecure context): say so explicitly instead of
+        // riding a TypeError through the catch, matching ShareButton
+        // and CopyListButton (devin 09-10 12:50).
+        setCopied(false);
+        setCopyFailed(true);
+        setTimeout(() => setCopyFailed(false), 2000);
+        return;
+      }
       try {
         await navigator.clipboard.writeText(value);
         setCopied(true);

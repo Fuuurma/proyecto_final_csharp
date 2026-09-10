@@ -619,7 +619,10 @@ function Explore() {
 function ExplorePending() {
   const navigate = useNavigate({ from: "/explore" });
   const { q, department, departmentId } = useSearch({ from: "/explore" });
-  const query = q ?? "";
+  // Trimmed like Explore below — the input key/defaultValue must match
+  // across the pending→main transition or the field remounts with a
+  // different value (devin 09-10 12:50).
+  const query = (q ?? "").trim();
   const activeDepartment = department ?? "all";
   const liveDepartmentName =
     activeDepartment !== "all"
