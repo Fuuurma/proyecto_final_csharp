@@ -182,6 +182,12 @@ test("A broad Explore search can load another page of the index", async ({
   await loadMore.click();
   await expect(page).toHaveURL(/page=2/);
   // Loading another page adds works without dropping what arrived.
+  // The count must be RETRYING — the tail-fill fetch resolves after
+  // the URL changes, and a snapshot read it mid-flight (the 24-cap
+  // that masked fixture engagement all night).
+  await expect(page.locator(".artwork-card")).not.toHaveCount(
+    SEARCH_PAGE_SIZE,
+  );
   const after = await page.locator(".artwork-card").count();
   expect(after).toBeGreaterThan(SEARCH_PAGE_SIZE);
 });
