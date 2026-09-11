@@ -2393,7 +2393,9 @@ img {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* contain: a saved artwork must never be cropped for a thumbnail
+     (grok 09-11 12:45 #4 — preserve-proportions contract). */
+  object-fit: contain;
 }
 
 .selection-tray__actions {
@@ -2432,7 +2434,10 @@ img {
 
 .selection-tray.is-collapsed .selection-tray__thumbs,
 .selection-tray.is-collapsed .selection-tray__copy strong {
-  display: none;
+  /* Keep the count visible when collapsed — hiding it left the tray
+     with only a chevron and no indication anything is saved (grok
+     09-11 12:45 #5). */
+  font-size: 0.8rem;
 }
 
 .selection-tray.is-collapsed .selection-tray__inner {
