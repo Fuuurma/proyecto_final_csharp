@@ -78,10 +78,16 @@ const missingDepartmentFilter = "__none__";
 
 function isFixtureMode(): boolean {
   // Non-`VITE_` prefix on purpose: Vite only ships `VITE_*` vars to the
-  // client bundle, so `MET_API_MODE` stays server-only. This module is a
-  // server function (`createServerFn`), so `import.meta.env` here is
-  // Vite's SSR env, which still resolves the full environment.
-  return import.meta.env.MET_API_MODE === "fixture";
+  // client bundle, so `MET_API_MODE` stays server-only. But
+  // `import.meta.env` resolves only prefixed vars — after the 97b3e7a
+  // rename it read undefined everywhere and fixture mode silently died
+  // in dev/e2e (caught by the 02:30 e2e run). Server functions run in
+  // Node: process.env is the source of truth (optional-chained for
+  // Workers, where process.env does not exist).
+  return (
+    process.env?.MET_API_MODE === "fixture" ||
+    import.meta.env?.MET_API_MODE === "fixture"
+  );
 }
 
 function filterCuratedArtworks(query: string, department: string): Artwork[] {
