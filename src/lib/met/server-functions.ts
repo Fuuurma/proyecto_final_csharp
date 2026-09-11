@@ -76,18 +76,26 @@ export type DepartmentIndexResult = {
 
 const missingDepartmentFilter = "__none__";
 
-function isFixtureMode(): boolean {
+async function isFixtureMode(): Promise<boolean> {
   // Non-`VITE_` prefix on purpose: Vite only ships `VITE_*` vars to the
-  // client bundle, so `MET_API_MODE` stays server-only. But
-  // `import.meta.env` resolves only prefixed vars — after the 97b3e7a
-  // rename it read undefined everywhere and fixture mode silently died
-  // in dev/e2e (caught by the 02:30 e2e run). Server functions run in
-  // Node: process.env is the source of truth (optional-chained for
-  // Workers, where process.env does not exist).
-  return (
-    process.env?.MET_API_MODE === "fixture" ||
-    import.meta.env?.MET_API_MODE === "fixture"
-  );
+  // client bundle, so `MET_API_MODE` stays server-only.
+  // Environment surfaces, in order:
+  //   1. process.env — Node contexts (vitest, scripts).
+  //   2. cloudflare:workers getBindings — the workerd isolate under
+  //      @cloudflare/vite-plugin; .dev.vars lands here, and shell env
+  //      (playwright webServer) does NOT reach it (97b3e7a rename +
+  //      plugin migration left fixture dead until 03:1x).
+  //   3. import.meta.env — prefixed-only fallback.
+  if (process.env?.MET_API_MODE === "fixture") return true;
+  try {
+    const cf = (await import("cloudflare:workers")) as {
+      getBindings?: () => { MET_API_MODE?: string };
+    };
+    if (cf.getBindings?.().MET_API_MODE === "fixture") return true;
+  } catch {
+    // Not running inside workerd (vitest/plain Node).
+  }
+  return import.meta.env?.MET_API_MODE === "fixture";
 }
 
 function filterCuratedArtworks(query: string, department: string): Artwork[] {
@@ -182,7 +190,7 @@ export const searchCollection = createServerFn({ method: "GET" })
       return curatedSearchResult(q, department, "curated");
     }
 
-    if (isFixtureMode()) {
+    if (await isFixtureMode()) {
       return curatedSearchResult(
         q,
         mappedDepartment,
@@ -326,7 +334,7 @@ export const getArtwork = createServerFn({ method: "GET" })
       return { status: "success", source: "curated", artwork: curated };
     }
 
-    if (isFixtureMode()) {
+    if (await isFixtureMode()) {
       return {
         status: "error",
         source: "fixture",
@@ -350,7 +358,7 @@ export const getArtwork = createServerFn({ method: "GET" })
 
 export const listDepartments = createServerFn({ method: "GET" }).handler(
   async (): Promise<DepartmentIndexResult> => {
-    if (isFixtureMode()) {
+    if (await isFixtureMode()) {
       return {
         status: "success",
         source: "fixture",

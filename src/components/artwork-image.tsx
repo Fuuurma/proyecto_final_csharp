@@ -49,13 +49,7 @@ export function ArtworkImage({
   // Mark it loaded from the element itself, before paint.
   useLayoutEffect(() => {
     const img = imageRef.current;
-    if (
-      source &&
-      img &&
-      img.complete &&
-      img.naturalWidth > 0 &&
-      loadedSrc === null
-    ) {
+    if (source && img?.complete && img.naturalWidth > 0 && loadedSrc === null) {
       setLoadedSrc(source);
     }
   }, [source, loadedSrc]);

@@ -31,9 +31,10 @@ describe("archive token contrast", () => {
   it("--archive reads at AA against --paper", () => {
     const archive = styles.match(/--archive:\s*(#[0-9a-f]{6})/)?.[1];
     const paper = styles.match(/--paper:\s*(#[0-9a-f]{6})/)?.[1];
-    expect(archive).toBeDefined();
-    expect(paper).toBeDefined();
-    expect(contrast(archive!, paper!)).toBeGreaterThanOrEqual(4.5);
+    if (!archive || !paper) {
+      throw new Error("expected --archive and --paper tokens in styles.css");
+    }
+    expect(contrast(archive, paper)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("sticky offsets derive from the header-height token", () => {
