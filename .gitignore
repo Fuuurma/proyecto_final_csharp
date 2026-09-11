@@ -30,3 +30,4 @@ test-results/
 .claude/settings.local.json
 .cursor/hooks.json
 .pnpm-store/
+.dev.vars
