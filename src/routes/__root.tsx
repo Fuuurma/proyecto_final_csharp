@@ -104,7 +104,7 @@ function RouteError({ error }: { error: Error }) {
         An unexpected error occurred while rendering this route. You can try the
         collection index again or return to the home page.
       </p>
-      {error.message ? (
+      {import.meta.env.DEV && error.message ? (
         <p className="mono route-error__detail">{error.message}</p>
       ) : null}
       <div className="hero__actions">

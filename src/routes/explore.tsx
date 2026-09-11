@@ -160,9 +160,12 @@ function Explore() {
   }
   const pathWorks =
     activePath && !live
-      ? result.artworks.filter((artwork) =>
-          activePath.artworkIds.some((id) => id === artwork.id),
-        )
+      ? // Sort to the path's OWN order — the curated array's order is
+        // an implementation detail, not the path definition (devin
+        // 09-08 18:17 #1).
+        activePath.artworkIds
+          .map((id) => result.artworks.find((artwork) => artwork.id === id))
+          .filter((artwork): artwork is Artwork => Boolean(artwork))
       : null;
   // The path chrome only describes the grid when the path actually owns
   // it — with a query active the grid is live Met results, and labelling
