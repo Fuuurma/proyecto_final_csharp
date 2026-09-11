@@ -80,22 +80,23 @@ async function isFixtureMode(): Promise<boolean> {
   // Non-`VITE_` prefix on purpose: Vite only ships `VITE_*` vars to the
   // client bundle, so `MET_API_MODE` stays server-only.
   // Environment surfaces, in order:
-  //   1. process.env — Node contexts (vitest, scripts).
-  //   2. cloudflare:workers getBindings — the workerd isolate under
-  //      @cloudflare/vite-plugin; .dev.vars lands here, and shell env
-  //      (playwright webServer) does NOT reach it (97b3e7a rename +
-  //      plugin migration left fixture dead until 03:1x).
-  //   3. import.meta.env — prefixed-only fallback.
+  //   1. process.env — Node contexts (vitest, scripts) and the workerd
+  //      isolate under nodejs_compat, which populates process.env from
+  //      bindings (this is how .dev.vars reaches us today).
+  //   2. cloudflare:workers `env` — the workerd bindings object directly;
+  //      .dev.vars lands here even without process-env population.
+  //      (`getBindings` was never a cloudflare:workers export — it is a
+  //      Miniflare class method — so the previous branch never matched.)
   if (process.env?.MET_API_MODE === "fixture") return true;
   try {
-    const cf = (await import("cloudflare:workers")) as {
-      getBindings?: () => { MET_API_MODE?: string };
+    const { env } = (await import("cloudflare:workers")) as {
+      env?: { MET_API_MODE?: string };
     };
-    if (cf.getBindings?.().MET_API_MODE === "fixture") return true;
+    if (env?.MET_API_MODE === "fixture") return true;
   } catch {
     // Not running inside workerd (vitest/plain Node).
   }
-  return import.meta.env?.MET_API_MODE === "fixture";
+  return false;
 }
 
 function filterCuratedArtworks(query: string, department: string): Artwork[] {
