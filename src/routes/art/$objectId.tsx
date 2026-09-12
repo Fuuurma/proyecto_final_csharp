@@ -30,6 +30,10 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { curatedArtworks } from "@/data/curated-artworks";
 import { isReviewDepartmentName } from "@/data/departments";
+import {
+  adjacentInSequence,
+  type SequenceNeighbors,
+} from "@/lib/browse-sequence";
 import type { Artwork } from "@/lib/met/normalize";
 import {
   type ArtworkDetailResult,
@@ -41,6 +45,12 @@ import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/art/$objectId")({
+  // `seq` names the session-stored browse sequence the visitor was paging
+  // through on Explore — Previous/Next resolve inside it (devin 09-09
+  // 06:17 P1).
+  validateSearch: (search: Record<string, unknown>): { seq?: string } => ({
+    seq: typeof search.seq === "string" ? search.seq : undefined,
+  }),
   head: ({ loaderData }: { loaderData?: ArtworkDetailResult }) => {
     const meta: Array<Record<string, string>> = [
       { title: "Object unavailable — Meet the Met" },
@@ -89,11 +99,22 @@ export const Route = createFileRoute("/art/$objectId")({
 function ArtworkDetail() {
   const result = Route.useLoaderData();
   const { objectId } = Route.useParams();
+  const { seq } = Route.useSearch();
   const navigate = useNavigate();
 
   const artwork = result?.status === "success" ? result.artwork : null;
+
+  // The browsed sequence is client-only (sessionStorage), so it resolves
+  // after mount — curated neighbors stay the first-paint/deep-link
+  // fallback, and the visited list wins once it proves to contain the
+  // work (devin 09-09 06:17 P1).
+  const [sequence, setSequence] = useState<SequenceNeighbors | null>(null);
+  useEffect(() => {
+    setSequence(seq && artwork ? adjacentInSequence(seq, artwork.id) : null);
+  }, [seq, artwork]);
+
   const adjacent = artwork
-    ? getAdjacentArtworks(artwork)
+    ? (sequence ?? getAdjacentArtworks(artwork))
     : { previous: null, next: null, position: 0, total: 0 };
 
   useEffect(() => {
@@ -118,6 +139,7 @@ function ArtworkDetail() {
           from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.previous.id) },
+          search: { seq },
         });
       } else if (event.key === "ArrowRight" && adjacent.next) {
         event.preventDefault();
@@ -125,13 +147,14 @@ function ArtworkDetail() {
           from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.next.id) },
+          search: { seq },
         });
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [adjacent.previous, adjacent.next, navigate]);
+  }, [adjacent.previous, adjacent.next, navigate, seq]);
 
   if (!result || result.status === "error" || !artwork) {
     const message =
@@ -322,6 +345,7 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.previous.id) }}
+              search={{ seq }}
               className="detail-sequence__link detail-sequence__link--previous"
             >
               <ArtworkImage artwork={adjacent.previous} />
@@ -340,6 +364,7 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.next.id) }}
+              search={{ seq }}
               className="detail-sequence__link detail-sequence__link--next"
             >
               <ArtworkImage artwork={adjacent.next} />
