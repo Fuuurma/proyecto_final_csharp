@@ -32,8 +32,13 @@ const collectionSearchInputSchema = z.object({
   page: z.number().int().min(1).max(SEARCH_MAX_PAGE).default(1),
 });
 
+/** Met object ids are positive ints below 1e9 — exported so the route
+ * loader can 404 out-of-range addresses instead of surfacing a Zod
+ * failure through RouteError (needs-work 09-12). */
+export const MAX_OBJECT_ID = 999_999_999;
+
 const artworkInputSchema = z.object({
-  objectId: z.number().int().positive().max(999_999_999),
+  objectId: z.number().int().positive().max(MAX_OBJECT_ID),
 });
 
 export type CollectionSearchResult = {

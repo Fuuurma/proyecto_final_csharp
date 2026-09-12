@@ -34,6 +34,7 @@ import type { Artwork } from "@/lib/met/normalize";
 import {
   type ArtworkDetailResult,
   getArtwork,
+  MAX_OBJECT_ID,
 } from "@/lib/met/server-functions";
 import { getRelatedArtworks } from "@/lib/related";
 import { artworkFromSelectionItem, useSelection } from "@/lib/selection";
@@ -73,11 +74,16 @@ export const Route = createFileRoute("/art/$objectId")({
     return { meta };
   },
   loader: ({ params }) => {
-    // Non-numeric slugs (/art/abc) are a wrong address, not a validator
-    // error — 404 instead of surfacing the Zod failure through RouteError
-    // (devin 09-09 16:57 #1).
+    // Non-numeric or out-of-range slugs (/art/abc, /art/1000000000) are
+    // wrong addresses, not validator errors — 404 instead of surfacing
+    // the Zod failure through RouteError (devin 09-09 16:57 #1;
+    // needs-work 09-12 for the cap).
     const objectId = Number(params.objectId);
-    if (!Number.isInteger(objectId) || objectId <= 0) {
+    if (
+      !Number.isInteger(objectId) ||
+      objectId <= 0 ||
+      objectId > MAX_OBJECT_ID
+    ) {
       throw notFound();
     }
     return getArtwork({ data: { objectId } });
