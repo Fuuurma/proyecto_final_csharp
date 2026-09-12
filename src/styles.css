@@ -1908,7 +1908,8 @@ img {
 }
 
 .detail-page__topline .text-link {
-  border: 0;
+  /* Keep the base underline: without it the back-link read as a
+     breadcrumb separator, not a link (grok 09-12 05:45). */
   color: var(--archive);
   font-weight: 400;
 }
