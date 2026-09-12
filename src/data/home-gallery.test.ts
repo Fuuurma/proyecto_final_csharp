@@ -30,9 +30,9 @@ describe("home gallery slot contract", () => {
   });
 
   it("derives slot classes from gallery position, not data identity", () => {
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal
-    // source text IS the assertion — the route builds classes via this
-    // template expression.
+    // The literal source text IS the assertion — the route builds its
+    // class names via this exact template expression.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional literal
     expect(index).toContain("home-gallery__item--${index + 1}");
   });
 });
