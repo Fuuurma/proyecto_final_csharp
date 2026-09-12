@@ -103,4 +103,9 @@ async function main() {
   await browser.close();
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  // console.error alone exits 0 — CI and wrappers would read a failed
+  // capture run (no server, launch, or navigation) as success.
+  console.error(error);
+  process.exitCode = 1;
+});
