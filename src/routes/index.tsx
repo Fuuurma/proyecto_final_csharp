@@ -80,9 +80,9 @@ function Home() {
             <em> made legible.</em>
           </h1>
           <p className="hero__lede">
-            Meet the Met is a quiet place to look closer: a committed review
-            set of public-domain works, their makers, and the details that
-            keep them in view.
+            Meet the Met is a quiet place to look closer: a committed review set
+            of public-domain works, their makers, and the details that keep them
+            in view.
           </p>
           <div className="hero__actions">
             <Link
