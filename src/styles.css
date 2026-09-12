@@ -1438,8 +1438,10 @@ img {
 }
 
 .department-toggle-group [data-slot="toggle-group-item"][aria-pressed="true"] {
-  border-color: var(--ink);
-  background: var(--ink);
+  /* DESIGN.md:30 — museum red is the one controlled accent for active
+     state / selection feedback; white on #b3322f = 6.15:1 (AA). */
+  border-color: var(--red);
+  background: var(--red);
   color: var(--white);
 }
 
