@@ -1931,7 +1931,9 @@ img {
 }
 
 .detail-page__topline .link-action {
-  border: 0;
+  /* Keep the base underline (border-bottom on .link-action): without it
+     the back-link read as a breadcrumb separator, not a link
+     (grok 09-12 05:45). */
   color: var(--archive);
   font-weight: 400;
 }
