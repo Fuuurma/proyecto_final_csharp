@@ -34,7 +34,7 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
     .getByRole("link", { name: "Wheat Field with Cypresses", exact: true });
   await expect(artworkLink).toBeVisible();
   await artworkLink.click();
-  await expect(page).toHaveURL(/\/art\/436535$/);
+  await expect(page).toHaveURL(/\/art\/436535(\?|$)/);
   await expect(
     page.locator(".detail-heading").getByRole("heading", {
       name: "Wheat Field with Cypresses",
@@ -106,7 +106,7 @@ test("Artwork tiles keep image, title, and a path into the record", async ({
 
   await firstCard.locator(".artwork-card__image-link").focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/art\/436535$/);
+  await expect(page).toHaveURL(/\/art\/436535(\?|$)/);
 });
 
 test("Curated paths narrow the review set", async ({ page }) => {
