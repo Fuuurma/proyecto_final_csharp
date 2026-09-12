@@ -1153,12 +1153,8 @@ img {
   opacity: 1;
 }
 
-.artwork-card:hover .artwork-image img,
-.home-gallery__item:hover .artwork-image img,
-.path-card:hover .artwork-image img,
-.collection-index__item:hover .artwork-image img {
-  transform: scale(1.02);
-}
+/* Archive stillness: artwork images do not zoom on hover — the queued
+   direction was "scale(1.02) → none" (head item, resolved). */
 
 .artwork-image__missing {
   display: flex;
@@ -1968,6 +1964,15 @@ img {
 .detail-image-trigger:focus-visible .detail-image-hint {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* Touch inputs have no hover — the Inspect affordance stays visible
+   there instead of existing only mid-hover (head item, resolved). */
+@media (hover: none) {
+  .detail-image-hint {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .image-dialog-content {
