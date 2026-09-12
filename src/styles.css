@@ -336,7 +336,7 @@ img {
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
   gap: clamp(2rem, 5vw, 5.5rem);
   align-items: center;
-  min-height: min(780px, calc(100dvh - 76px));
+  min-height: min(780px, calc(100dvh - var(--header-h)));
   padding-block: 1.75rem 3.5rem;
 }
 
