@@ -23,7 +23,9 @@ if (current !== desired) {
 }
 
 export default defineConfig({
-  globalSetup: "./e2e-global-setup.ts",
+  // No globalSetup: the config block above already owns the backup+write,
+  // and a setup-time rewrite backed the fixture up OVER the real backup,
+  // making the original unrecoverable (needs-work 09-12 05:20 #1).
   globalTeardown: "./e2e-global-teardown.ts",
   testDir: "./tests",
   fullyParallel: true,

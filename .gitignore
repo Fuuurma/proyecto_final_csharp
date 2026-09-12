@@ -31,3 +31,4 @@ test-results/
 .cursor/hooks.json
 .pnpm-store/
 .dev.vars
+.dev.vars.e2e-bak

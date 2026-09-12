@@ -6,8 +6,8 @@ class project into a production-quality design and engineering case study.
 ## Current status
 
 The original ASP.NET Core MVC implementation is preserved in Git at commit
-`6164b92` and by the local `legacy-2023` tag. The active local `redesign`
-branch now contains a responsive editorial home, deterministic Explore review
+`6164b92` and by the local `legacy-2023` tag; the `redesign` rebuild branch
+was merged and deleted on 09-09. The codebase now contains a responsive editorial home, deterministic Explore review
 set, four URL-addressable curated paths, a Departments index, image-led
 artwork detail views, local Selection with reorder, live Met search/detail
 loaders, shadcn Base UI primitives, and a Playwright journey on desktop and
@@ -63,7 +63,7 @@ corepack pnpm deploy:check
 ```
 
 The current UI review set is committed in
-`src/data/curated-artworks.ts`, using 33 public-domain Met object IDs across
+`src/data/curated-artworks.ts`, using 45 public-domain Met object IDs across
 paintings, prints, drawings, photographs, and books. Empty
 Explore loads use that deterministic set; typed searches and the four
 department chips query The Met for public-domain, image-backed works, hydrate
