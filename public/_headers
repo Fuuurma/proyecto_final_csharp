@@ -1,0 +1,6 @@
+# Safe-by-default headers for static assets. A full CSP (script-src
+# nonces/hashes) is a queued design pass — these cannot break anything.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
