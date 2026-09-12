@@ -141,7 +141,15 @@ function ArtworkDetail() {
     return <ArtworkUnavailable objectId={Number(objectId)} message={message} />;
   }
 
-  const related = getRelatedArtworks(artwork, curatedArtworks);
+  // Related is curated-only by design; for a live-searched object the
+  // review set isn't "related", it's a different exhibit — hide instead
+  // of implying curation coverage (head item, resolved).
+  const isCurated = curatedArtworks.some(
+    (candidate) => candidate.id === artwork.id,
+  );
+  const related = isCurated
+    ? getRelatedArtworks(artwork, curatedArtworks)
+    : { label: "", artworks: [] };
   // Deduped: a live object whose additionalImages repeat the primary
   // would otherwise yield duplicate tab keys (devin 09-09 23:37 #7).
   const imageSources = [
