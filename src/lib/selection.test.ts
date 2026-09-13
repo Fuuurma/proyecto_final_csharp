@@ -4,6 +4,7 @@ import {
   artworkFromSelectionItem,
   emptySelectionState,
   moveSelectionItem,
+  parseStoredSelection,
   type SelectionState,
   selectionItemFromArtwork,
   selectionReducer,
@@ -70,6 +71,42 @@ describe("artworkFromSelectionItem legacy fallback", () => {
     delete (legacy as { primaryImage?: string }).primaryImage;
     const local = artworkFromSelectionItem(legacy);
     expect(local.primaryImage).toBe("https://example.com/work.jpg");
+  });
+});
+
+describe("parseStoredSelection", () => {
+  const item = selectionItemFromArtwork(artwork);
+
+  it("migrates a legacy v0 bare array deterministically", () => {
+    const legacy = { ...item } as Partial<typeof item>;
+    delete legacy.primaryImage;
+    const parsed = parseStoredSelection(JSON.stringify([legacy]));
+    expect(parsed).toEqual([
+      { ...legacy, primaryImage: legacy.primaryImageSmall },
+    ]);
+  });
+
+  it("reads the versioned envelope written by the current build", () => {
+    const stored = JSON.stringify({ version: 1, items: [item] });
+    expect(parseStoredSelection(stored)).toEqual([item]);
+  });
+
+  it("drops only the off-shape item, keeping valid siblings", () => {
+    const missingField = { ...item } as Partial<typeof item>;
+    delete missingField.imageAspectRatio;
+    const wrongType = { ...item, artist: 42 };
+    const stored = JSON.stringify({
+      version: 1,
+      items: [item, missingField, wrongType, null, "junk"],
+    });
+    expect(parseStoredSelection(stored)).toEqual([item]);
+  });
+
+  it("returns an empty selection for non-JSON or non-payload shapes", () => {
+    expect(parseStoredSelection(null)).toEqual([]);
+    expect(parseStoredSelection("{not json")).toEqual([]);
+    expect(parseStoredSelection(JSON.stringify({ items: "no" }))).toEqual([]);
+    expect(parseStoredSelection(JSON.stringify(42))).toEqual([]);
   });
 });
 
