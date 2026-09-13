@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArtworkImage } from "@/components/artwork-image";
 import { ArrowUpRightIcon } from "@/components/icons";
-import { curatedArtworks } from "@/data/curated-artworks";
+import { aboutSourceArtwork } from "@/data/curated-artworks";
 
 export const Route = createFileRoute("/about")({
   head: () => ({
@@ -24,7 +24,7 @@ export const Route = createFileRoute("/about")({
 });
 
 function About() {
-  const sourceArtwork = curatedArtworks.find((artwork) => artwork.id === 56353);
+  const sourceArtwork = aboutSourceArtwork;
 
   return (
     <main className="page-frame about-page" aria-labelledby="about-heading">
