@@ -343,10 +343,17 @@ describe("selectionReducer", () => {
       items: stored,
     });
     expect(hydrated.items.map((i) => i.id)).toEqual([9]);
+  });
 
+  it("hydrate merges the stored payload with pre-hydration edits", () => {
+    // needs-work 09-15 00:01 P3: a toggle landing before the mount
+    // hydration effect used to make the hydrate a no-op, permanently
+    // discarding the stored selection. Merge instead — nothing is
+    // lost; stored uniques keep their order behind the live edits.
+    const stored = [selectionItemFromArtwork(makeArtwork(9, "Stored"))];
     const live = toggle(empty, 1, "Live");
-    const kept = selectionReducer(live, { type: "hydrate", items: stored });
-    expect(kept.items.map((i) => i.id)).toEqual([1]);
+    const merged = selectionReducer(live, { type: "hydrate", items: stored });
+    expect(merged.items.map((i) => i.id)).toEqual([1, 9]);
   });
 
   it("move announces the reordering to screen readers", () => {

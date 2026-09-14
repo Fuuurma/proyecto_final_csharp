@@ -293,8 +293,16 @@ export function selectionReducer(
   action: SelectionAction,
 ): SelectionState {
   switch (action.type) {
-    case "hydrate":
-      return state.items.length > 0 ? state : { ...state, items: action.items };
+    case "hydrate": {
+      if (state.items.length === 0) return { ...state, items: action.items };
+      // Pre-hydration edits landed — merge instead of dropping either
+      // side (needs-work 09-15 00:01 P3: the old guard discarded the
+      // stored payload wholesale once any item existed). Stored
+      // uniques keep their order behind the live edits.
+      const existing = new Set(state.items.map((i) => i.id));
+      const storedNew = action.items.filter((i) => !existing.has(i.id));
+      return { ...state, items: [...state.items, ...storedNew] };
+    }
     case "toggle": {
       const alreadySaved = state.items.some(
         (item) => item.id === action.artwork.id,
