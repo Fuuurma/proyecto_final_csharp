@@ -974,6 +974,10 @@ export const curatedObjectIds = curatedArtworks.map((artwork) => artwork.id);
 
 export const featuredArtwork = curatedArtworks[0];
 
+export const aboutSourceArtwork: Artwork | undefined = curatedArtworks.find(
+  (artwork) => artwork.id === 56353,
+);
+
 export const homeGalleryIds = [
   436880, 56353, 436964, 283626, 345033, 55176, 437999, 436536, 438009, 436155,
   435877, 441104,
