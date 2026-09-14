@@ -5,7 +5,10 @@ import {
   emptySelectionState,
   moveSelectionItem,
   parseStoredSelection,
+  persistSelection,
+  readSelection,
   type SelectionState,
+  STORAGE_KEY,
   selectionItemFromArtwork,
   selectionReducer,
 } from "./selection";
@@ -80,15 +83,18 @@ describe("parseStoredSelection", () => {
   it("migrates a legacy v0 bare array deterministically", () => {
     const legacy = { ...item } as Partial<typeof item>;
     delete legacy.primaryImage;
-    const parsed = parseStoredSelection(JSON.stringify([legacy]));
-    expect(parsed).toEqual([
-      { ...legacy, primaryImage: legacy.primaryImageSmall },
-    ]);
+    expect(parseStoredSelection(JSON.stringify([legacy]))).toEqual({
+      status: "ok",
+      items: [{ ...legacy, primaryImage: legacy.primaryImageSmall }],
+    });
   });
 
   it("reads the versioned envelope written by the current build", () => {
     const stored = JSON.stringify({ version: 1, items: [item] });
-    expect(parseStoredSelection(stored)).toEqual([item]);
+    expect(parseStoredSelection(stored)).toEqual({
+      status: "ok",
+      items: [item],
+    });
   });
 
   it("drops only the off-shape item, keeping valid siblings", () => {
@@ -99,14 +105,124 @@ describe("parseStoredSelection", () => {
       version: 1,
       items: [item, missingField, wrongType, null, "junk"],
     });
-    expect(parseStoredSelection(stored)).toEqual([item]);
+    expect(parseStoredSelection(stored)).toEqual({
+      status: "ok",
+      items: [item],
+    });
   });
 
   it("returns an empty selection for non-JSON or non-payload shapes", () => {
-    expect(parseStoredSelection(null)).toEqual([]);
-    expect(parseStoredSelection("{not json")).toEqual([]);
-    expect(parseStoredSelection(JSON.stringify({ items: "no" }))).toEqual([]);
-    expect(parseStoredSelection(JSON.stringify(42))).toEqual([]);
+    expect(parseStoredSelection(null)).toEqual({ status: "ok", items: [] });
+    expect(parseStoredSelection("{not json")).toEqual({
+      status: "ok",
+      items: [],
+    });
+    expect(parseStoredSelection(JSON.stringify({ items: "no" }))).toEqual({
+      status: "ok",
+      items: [],
+    });
+    expect(parseStoredSelection(JSON.stringify(42))).toEqual({
+      status: "ok",
+      items: [],
+    });
+  });
+
+  it("flags a stored version with no migration as unsupported", () => {
+    const future = JSON.stringify({ version: 2, items: [item] });
+    expect(parseStoredSelection(future)).toEqual({
+      status: "unsupported-version",
+      version: 2,
+    });
+  });
+
+  it("dedupes repeated ids, keeping the first stored copy", () => {
+    const duplicate = { ...item, displayTitle: "Duplicate copy" };
+    const stored = JSON.stringify({ version: 1, items: [item, duplicate] });
+    expect(parseStoredSelection(stored)).toEqual({
+      status: "ok",
+      items: [item],
+    });
+  });
+
+  it("rejects non-positive imageAspectRatio values", () => {
+    const zero = { ...item, imageAspectRatio: 0 };
+    const negative = { ...item, imageAspectRatio: -2 };
+    const stored = JSON.stringify({
+      version: 1,
+      items: [item, zero, negative],
+    });
+    expect(parseStoredSelection(stored)).toEqual({
+      status: "ok",
+      items: [item],
+    });
+  });
+});
+
+describe("selection storage read/write", () => {
+  const item = selectionItemFromArtwork(artwork);
+  const second = selectionItemFromArtwork({
+    ...artwork,
+    id: 7,
+    displayTitle: "Second work",
+  });
+
+  function createStorageStub(initial?: string) {
+    const map = new Map<string, string>();
+    if (initial !== undefined) map.set(STORAGE_KEY, initial);
+    return {
+      getItem: (key: string) => map.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        map.set(key, value);
+      },
+      stored: () => map.get(STORAGE_KEY) ?? null,
+    };
+  }
+
+  it("persists the {version, items} envelope under the selection key", () => {
+    const storage = createStorageStub();
+    persistSelection(storage, [item]);
+    expect(JSON.parse(storage.stored() ?? "null")).toEqual({
+      version: 1,
+      items: [item],
+    });
+  });
+
+  it("hydrate-then-write upgrades a v0 bare array to the v1 envelope", () => {
+    const legacy = { ...item } as Partial<typeof item>;
+    delete legacy.primaryImage;
+    const storage = createStorageStub(JSON.stringify([legacy]));
+
+    persistSelection(storage, readSelection(storage));
+
+    expect(JSON.parse(storage.stored() ?? "null")).toEqual({
+      version: 1,
+      items: [{ ...legacy, primaryImage: legacy.primaryImageSmall }],
+    });
+  });
+
+  it("round-trips a save through storage and back", () => {
+    const storage = createStorageStub();
+    persistSelection(storage, [item, second]);
+    expect(readSelection(storage)).toEqual([item, second]);
+  });
+
+  it("never clobbers an envelope written by a newer build", () => {
+    const foreign = JSON.stringify({ version: 2, items: [item] });
+    const storage = createStorageStub(foreign);
+
+    expect(readSelection(storage)).toEqual([]);
+    persistSelection(storage, [item]);
+
+    expect(storage.stored()).toBe(foreign);
+  });
+
+  it("re-stamps over a corrupt payload, which holds nothing recoverable", () => {
+    const storage = createStorageStub("{not json");
+    persistSelection(storage, [item]);
+    expect(JSON.parse(storage.stored() ?? "null")).toEqual({
+      version: 1,
+      items: [item],
+    });
   });
 });
 

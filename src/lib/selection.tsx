@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { Artwork } from "./met/normalize";
 
-const STORAGE_KEY = "meet-the-met.selection";
+export const STORAGE_KEY = "meet-the-met.selection";
 /**
  * Stored-payload schema version. v0 wrote a bare SelectionItem[]; v1 wraps
  * it in { version, items } so a future required-field addition can migrate
@@ -117,7 +117,9 @@ function isSelectionItem(value: unknown): value is SelectionItem {
     isNullableString(item.date) &&
     isNullableString(item.primaryImage) &&
     isNullableString(item.primaryImageSmall) &&
-    typeof item.imageAspectRatio === "number"
+    typeof item.imageAspectRatio === "number" &&
+    Number.isFinite(item.imageAspectRatio) &&
+    item.imageAspectRatio > 0
   );
 }
 
@@ -130,35 +132,122 @@ function migrateStoredItem(value: unknown): SelectionItem | null {
   return isSelectionItem(item) ? item : null;
 }
 
-/** Parses the raw localStorage payload: v0 bare array or v1+ envelope. */
-export function parseStoredSelection(raw: string | null): SelectionItem[] {
-  if (!raw) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  const candidates = Array.isArray(parsed)
-    ? parsed
-    : parsed !== null &&
-        typeof parsed === "object" &&
-        Array.isArray((parsed as { items?: unknown }).items)
-      ? (parsed as { items: unknown[] }).items
-      : [];
+function migrateItems(candidates: unknown): SelectionItem[] {
+  if (!Array.isArray(candidates)) return [];
   const items: SelectionItem[] = [];
+  const seen = new Set<number>();
   for (const candidate of candidates) {
     const item = migrateStoredItem(candidate);
-    if (item) items.push(item);
+    // Duplicated ids produce duplicate React keys and divergent remove-all
+    // vs move/has behavior — keep only the first stored copy.
+    if (item && !seen.has(item.id)) {
+      seen.add(item.id);
+      items.push(item);
+    }
   }
   return items;
 }
 
-function readSelection(): SelectionItem[] {
+function readEnvelopeItems(stored: unknown): SelectionItem[] {
+  return migrateItems(
+    stored !== null && typeof stored === "object"
+      ? (stored as { items?: unknown }).items
+      : undefined,
+  );
+}
+
+/**
+ * Migration table: key = stored `version`, value = reader that turns that
+ * payload shape into current items. v0 is the pre-envelope bare array,
+ * normalized to { items } before dispatch. Add a reader for every new
+ * SELECTION_VERSION so older payloads keep loading; a stored version with
+ * no reader belongs to a newer build and must never be re-stamped over
+ * (review 09-14 P1).
+ */
+const SELECTION_MIGRATIONS: Record<
+  number,
+  (stored: unknown) => SelectionItem[]
+> = {
+  0: readEnvelopeItems,
+  1: readEnvelopeItems,
+};
+
+/**
+ * Read result for the stored payload. "ok" carries usable items (possibly
+ * empty); "unsupported-version" means a newer build owns the payload — it
+ * hydrates nothing here and is never clobbered.
+ */
+export type ParsedStoredSelection =
+  | { status: "ok"; items: SelectionItem[] }
+  | { status: "unsupported-version"; version: number };
+
+/** Parses the raw localStorage payload, dispatching on `version`. */
+export function parseStoredSelection(
+  raw: string | null,
+): ParsedStoredSelection {
+  if (!raw) return { status: "ok", items: [] };
+  let parsed: unknown;
   try {
-    return parseStoredSelection(window.localStorage.getItem(STORAGE_KEY));
+    parsed = JSON.parse(raw);
+  } catch {
+    return { status: "ok", items: [] };
+  }
+  const version = Array.isArray(parsed)
+    ? 0
+    : parsed !== null && typeof parsed === "object"
+      ? (parsed as { version?: unknown }).version
+      : undefined;
+  if (typeof version !== "number") return { status: "ok", items: [] };
+  const stored = Array.isArray(parsed) ? { items: parsed } : parsed;
+  const migrate = SELECTION_MIGRATIONS[version];
+  return migrate
+    ? { status: "ok", items: migrate(stored) }
+    : { status: "unsupported-version", version };
+}
+
+type SelectionStorage = Pick<Storage, "getItem" | "setItem">;
+
+function localStorageOrNull(): SelectionStorage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function readSelection(storage: SelectionStorage): SelectionItem[] {
+  try {
+    const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
+    // A newer build's envelope hydrates nothing here but stays on disk
+    // for the version that can read it.
+    return stored.status === "ok" ? stored.items : [];
   } catch {
     return [];
+  }
+}
+
+export function persistSelection(
+  storage: SelectionStorage,
+  items: SelectionItem[],
+): void {
+  try {
+    // Never re-stamp over an unsupported-version payload: this build
+    // cannot represent it, and overwriting would destroy data a future
+    // migration could still recover (review 09-14 P1).
+    if (
+      parseStoredSelection(storage.getItem(STORAGE_KEY)).status ===
+      "unsupported-version"
+    ) {
+      return;
+    }
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ version: SELECTION_VERSION, items }),
+    );
+  } catch {
+    // Private mode / quota-exceeded: the in-memory tray keeps working,
+    // persistence just degrades for this visit. Mirrors readSelection's
+    // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
   }
 }
 
@@ -246,22 +335,18 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    dispatch({ type: "hydrate", items: readSelection() });
+    const storage = localStorageOrNull();
+    dispatch({
+      type: "hydrate",
+      items: storage ? readSelection(storage) : [],
+    });
     setIsHydrated(true);
   }, []);
 
   useEffect(() => {
     if (!isHydrated) return;
-    try {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ version: SELECTION_VERSION, items }),
-      );
-    } catch {
-      // Private mode / quota-exceeded: the in-memory tray keeps working,
-      // persistence just degrades for this visit. Mirrors readSelection's
-      // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
-    }
+    const storage = localStorageOrNull();
+    if (storage) persistSelection(storage, items);
   }, [isHydrated, items]);
 
   const has = useCallback(
