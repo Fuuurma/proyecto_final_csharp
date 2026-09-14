@@ -38,14 +38,14 @@ function About() {
             for looking closer.
           </p>
           <div className="about-hero__actions">
-            <Link to="/explore" className="text-link">
+            <Link to="/explore" className="link-action">
               Enter the collection <span aria-hidden="true">→</span>
             </Link>
             <a
               href="https://www.metmuseum.org/about-the-met/policies-and-documents/open-access"
               target="_blank"
               rel="noreferrer"
-              className="text-link text-link--quiet"
+              className="link-action link-action--quiet"
             >
               Read the source policy <ArrowUpRightIcon />
             </a>
@@ -85,11 +85,11 @@ function About() {
           <Link
             to="/explore"
             search={{ path: "van-gogh-late-light" }}
-            className="text-link"
+            className="link-action"
           >
             Explore a curated path <span aria-hidden="true">→</span>
           </Link>
-          <Link to="/departments" className="text-link">
+          <Link to="/departments" className="link-action">
             Browse departments <span aria-hidden="true">→</span>
           </Link>
         </section>

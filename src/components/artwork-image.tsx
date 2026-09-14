@@ -54,14 +54,13 @@ export function ArtworkImage({
     }
   }, [source, loadedSrc]);
 
-  const imageStyle: CSSProperties =
-    layout === "ratio"
-      ? { aspectRatio: artwork.imageAspectRatio }
-      : ({ "--artwork-ratio": artwork.imageAspectRatio } as CSSProperties);
+  const imageStyle = {
+    "--artwork-ratio": artwork.imageAspectRatio,
+  } as CSSProperties;
 
   return (
     <div
-      className={`artwork-image ${layout === "fill" ? "artwork-image--fill" : ""} ${loadedSrc === source ? "" : "is-loading"} ${className}`.trim()}
+      className={`artwork-image ${layout === "ratio" ? "aspect-(--artwork-ratio)" : ""} ${layout === "fill" ? "artwork-image--fill" : ""} ${loadedSrc === source ? "" : "is-loading"} ${className}`.trim()}
       style={imageStyle}
     >
       {source ? (

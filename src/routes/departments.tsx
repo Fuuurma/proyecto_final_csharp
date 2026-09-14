@@ -101,7 +101,7 @@ function Departments() {
                   <span className="mono">{count} review works</span>
                   <h3>{department.name}</h3>
                   <p>{department.description}</p>
-                  <span className="text-link">
+                  <span className="link-action">
                     Open department <span aria-hidden="true">→</span>
                   </span>
                 </div>
@@ -163,7 +163,7 @@ function Departments() {
                     path: undefined,
                     q: undefined,
                   }}
-                  className="text-link"
+                  className="link-action"
                 >
                   Open in Explore <span aria-hidden="true">→</span>
                 </Link>

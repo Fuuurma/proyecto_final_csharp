@@ -156,7 +156,7 @@ function ArtworkDetail() {
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
-        <Link to="/explore" className="text-link">
+        <Link to="/explore" className="link-action">
           <ArrowLeftIcon /> Back to Explore
         </Link>
         <div className="detail-page__topline-meta">
@@ -207,7 +207,7 @@ function ArtworkDetail() {
                 href={artwork.primaryImage ?? artwork.primaryImageSmall ?? "#"}
                 target="_blank"
                 rel="noreferrer"
-                className="text-link text-link--quiet"
+                className="link-action link-action--quiet"
               >
                 Open image <ArrowUpRightIcon />
               </a>
@@ -328,7 +328,7 @@ function ArtworkDetail() {
               <div className="detail-sequence__copy">
                 <span className="mono">Previous object</span>
                 <h2>{adjacent.previous.displayTitle}</h2>
-                <span className="text-link">
+                <span className="link-action">
                   Open record <span aria-hidden="true">←</span>
                 </span>
               </div>
@@ -346,7 +346,7 @@ function ArtworkDetail() {
               <div className="detail-sequence__copy">
                 <span className="mono">Next object</span>
                 <h2>{adjacent.next.displayTitle}</h2>
-                <span className="text-link">
+                <span className="link-action">
                   Open record <span aria-hidden="true">→</span>
                 </span>
               </div>
@@ -401,7 +401,7 @@ function ArtworkDetailPending() {
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
-        <span className="text-link">Reading object record…</span>
+        <span className="link-action">Reading object record…</span>
       </div>
       <div className="detail-layout page-frame detail-loading" aria-busy="true">
         <div className="detail-image-column">
@@ -611,7 +611,7 @@ function ArtworkUnavailable({
     return (
       <main className="detail-page">
         <div className="page-frame detail-page__topline">
-          <Link to="/selection" className="text-link">
+          <Link to="/selection" className="link-action">
             <ArrowLeftIcon /> Back to Selection
           </Link>
           <span className="mono">Object {artwork.id}</span>

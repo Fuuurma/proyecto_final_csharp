@@ -34,3 +34,6 @@ test-results/
 
 # repowise index (machine-local codebase intelligence)
 .repowise/
+
+# repowise API keys (local)
+.repowise/.env
