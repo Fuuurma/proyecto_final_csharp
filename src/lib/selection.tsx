@@ -59,6 +59,18 @@ export function moveSelectionItem(
   return next;
 }
 
+/**
+ * Single recovery policy for a missing or corrupt stored ratio: default to
+ * 1. migrateStoredItem and artworkFromSelectionItem share it so a stored
+ * item is never recovered differently at parse time vs rebuild time
+ * (review 09-14 P3).
+ */
+function selectionAspectRatio(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : 1;
+}
+
 export function artworkFromSelectionItem(item: SelectionItem): Artwork {
   return {
     id: item.id,
@@ -79,10 +91,7 @@ export function artworkFromSelectionItem(item: SelectionItem): Artwork {
     primaryImage: item.primaryImage ?? item.primaryImageSmall,
     primaryImageSmall: item.primaryImageSmall,
     additionalImages: [],
-    imageAspectRatio:
-      typeof item.imageAspectRatio === "number" && item.imageAspectRatio > 0
-        ? item.imageAspectRatio
-        : 1,
+    imageAspectRatio: selectionAspectRatio(item.imageAspectRatio),
     isPublicDomain: true,
     rights: null,
     creditLine: null,
@@ -129,6 +138,7 @@ function migrateStoredItem(value: unknown): SelectionItem | null {
   // primaryImage joined the stored shape after launch — fill it from the
   // small asset, the same fallback artworkFromSelectionItem applies.
   item.primaryImage ??= item.primaryImageSmall;
+  item.imageAspectRatio = selectionAspectRatio(item.imageAspectRatio);
   return isSelectionItem(item) ? item : null;
 }
 
@@ -162,11 +172,12 @@ function readEnvelopeItems(stored: unknown): SelectionItem[] {
  * normalized to { items } before dispatch. Add a reader for every new
  * SELECTION_VERSION so older payloads keep loading; a stored version with
  * no reader belongs to a newer build and must never be re-stamped over
- * (review 09-14 P1).
+ * (review 09-14 P1). Partial keeps "no reader" inside the type system —
+ * without it, indexing claimed every version had a reader and tsc could
+ * not see the unsupported-version fallback (review 09-14 P3).
  */
-const SELECTION_MIGRATIONS: Record<
-  number,
-  (stored: unknown) => SelectionItem[]
+const SELECTION_MIGRATIONS: Partial<
+  Record<number, (stored: unknown) => SelectionItem[]>
 > = {
   0: readEnvelopeItems,
   1: readEnvelopeItems,
@@ -233,11 +244,16 @@ export function persistSelection(
   try {
     // Never re-stamp over an unsupported-version payload: this build
     // cannot represent it, and overwriting would destroy data a future
-    // migration could still recover (review 09-14 P1).
-    if (
-      parseStoredSelection(storage.getItem(STORAGE_KEY)).status ===
-      "unsupported-version"
-    ) {
+    // migration could still recover (review 09-14 P1). The refusal must
+    // not be silent — saves and clears no-op while the newer payload is
+    // preserved (review 09-14 P3).
+    // TODO: surface a "selection changes are not being saved" notice in
+    // the tray while an unsupported-version payload owns the key.
+    const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
+    if (stored.status === "unsupported-version") {
+      console.warn(
+        `[selection] stored payload has version ${stored.version}, which this build cannot read; keeping it on disk and skipping this write`,
+      );
       return;
     }
     storage.setItem(

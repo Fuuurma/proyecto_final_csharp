@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Artwork } from "./met/normalize";
 import {
   artworkFromSelectionItem,
@@ -99,7 +99,7 @@ describe("parseStoredSelection", () => {
 
   it("drops only the off-shape item, keeping valid siblings", () => {
     const missingField = { ...item } as Partial<typeof item>;
-    delete missingField.imageAspectRatio;
+    delete missingField.displayTitle;
     const wrongType = { ...item, artist: 42 };
     const stored = JSON.stringify({
       version: 1,
@@ -144,16 +144,25 @@ describe("parseStoredSelection", () => {
     });
   });
 
-  it("rejects non-positive imageAspectRatio values", () => {
-    const zero = { ...item, imageAspectRatio: 0 };
-    const negative = { ...item, imageAspectRatio: -2 };
+  it("recovers an absent or non-positive imageAspectRatio to the rebuild fallback", () => {
+    // migrateStoredItem must agree with artworkFromSelectionItem, which
+    // defaults a bad ratio to 1 — dropping the whole item would lose a
+    // saved work over one corrupt field (review 09-14 P3).
+    const absent = { ...item, id: 43 } as Partial<typeof item>;
+    delete absent.imageAspectRatio;
+    const zero = { ...item, id: 44, imageAspectRatio: 0 };
+    const negative = { ...item, id: 45, imageAspectRatio: -2 };
     const stored = JSON.stringify({
       version: 1,
-      items: [item, zero, negative],
+      items: [absent, zero, negative],
     });
     expect(parseStoredSelection(stored)).toEqual({
       status: "ok",
-      items: [item],
+      items: [
+        { ...item, id: 43, imageAspectRatio: 1 },
+        { ...item, id: 44, imageAspectRatio: 1 },
+        { ...item, id: 45, imageAspectRatio: 1 },
+      ],
     });
   });
 });
@@ -214,6 +223,18 @@ describe("selection storage read/write", () => {
     persistSelection(storage, [item]);
 
     expect(storage.stored()).toBe(foreign);
+  });
+
+  it("warns instead of silently no-oping when a newer build owns the payload", () => {
+    const foreign = JSON.stringify({ version: 2, items: [item] });
+    const storage = createStorageStub(foreign);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    persistSelection(storage, [item]);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("version 2"));
+    expect(storage.stored()).toBe(foreign);
+    warn.mockRestore();
   });
 
   it("re-stamps over a corrupt payload, which holds nothing recoverable", () => {
