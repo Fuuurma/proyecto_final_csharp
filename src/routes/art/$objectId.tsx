@@ -578,7 +578,7 @@ function ShareButton({ artwork }: { artwork: Artwork }) {
       type="button"
       variant="outline"
       size="lg"
-      className="record-link share-button"
+      className="record-link"
       onClick={handleShare}
       aria-label={copied ? "Link copied to clipboard" : "Copy object page link"}
     >

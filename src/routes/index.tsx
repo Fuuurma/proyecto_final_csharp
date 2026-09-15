@@ -54,7 +54,7 @@ function Home() {
               artwork={featuredArtwork}
               size="large"
               eager
-              className="artwork-image--hero"
+              className=""
             />
           </Link>
           <figcaption className="hero__record">
