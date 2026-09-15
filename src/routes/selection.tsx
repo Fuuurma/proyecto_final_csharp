@@ -127,7 +127,7 @@ function Selection() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="text-button"
+                className="button-quiet"
                 onClick={() => {
                   if (typeof window !== "undefined") window.print();
                 }}
@@ -138,7 +138,11 @@ function Selection() {
               <AlertDialog>
                 <AlertDialogTrigger
                   render={
-                    <Button variant="ghost" size="sm" className="text-button" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="button-quiet"
+                    />
                   }
                 >
                   Clear selection
@@ -271,7 +275,7 @@ function CopyListButton({ items }: { items: SelectionItem[] }) {
       type="button"
       variant="ghost"
       size="sm"
-      className="text-button"
+      className="button-quiet"
       onClick={handleCopy}
       aria-label="Copy saved works list to clipboard"
     >

@@ -32,8 +32,12 @@ export function SelectionTray() {
           {items.slice(0, 4).map((item) => (
             <span
               key={item.id}
-              className="selection-tray__thumb"
-              style={{ aspectRatio: item.imageAspectRatio }}
+              className="selection-tray__thumb aspect-(--tray-ratio)"
+              style={
+                {
+                  "--tray-ratio": item.imageAspectRatio,
+                } as import("react").CSSProperties
+              }
             >
               {(() => {
                 const thumb = item.primaryImageSmall ?? item.primaryImage;
@@ -43,7 +47,7 @@ export function SelectionTray() {
           ))}
         </div>
         <div className="selection-tray__actions">
-          <Link to="/selection" className="text-link">
+          <Link to="/selection" className="link-action">
             Open selection <span aria-hidden="true">→</span>
           </Link>
           <button

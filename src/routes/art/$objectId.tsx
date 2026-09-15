@@ -156,7 +156,7 @@ function ArtworkDetail() {
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
-        <Link to="/explore" className="text-link">
+        <Link to="/explore" className="link-action">
           <ArrowLeftIcon /> Back to Explore
         </Link>
         <div className="detail-page__topline-meta">
@@ -187,7 +187,7 @@ function ArtworkDetail() {
         className="detail-layout page-frame"
         aria-labelledby="artwork-title"
       >
-        <div className="detail-image-column">
+        <div className="">
           {/* Remount per object: ArtworkStage holds activeSrc in state —
               without the key, prev/next navigation kept showing the
               previous object's image until a tab was clicked, and a
@@ -207,7 +207,7 @@ function ArtworkDetail() {
                 href={artwork.primaryImage ?? artwork.primaryImageSmall ?? "#"}
                 target="_blank"
                 rel="noreferrer"
-                className="text-link text-link--quiet"
+                className="link-action link-action--quiet"
               >
                 Open image <ArrowUpRightIcon />
               </a>
@@ -322,13 +322,13 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.previous.id) }}
-              className="detail-sequence__link detail-sequence__link--previous"
+              className="detail-sequence__link"
             >
               <ArtworkImage artwork={adjacent.previous} />
               <div className="detail-sequence__copy">
                 <span className="mono">Previous object</span>
                 <h2>{adjacent.previous.displayTitle}</h2>
-                <span className="text-link">
+                <span className="link-action">
                   Open record <span aria-hidden="true">←</span>
                 </span>
               </div>
@@ -346,7 +346,7 @@ function ArtworkDetail() {
               <div className="detail-sequence__copy">
                 <span className="mono">Next object</span>
                 <h2>{adjacent.next.displayTitle}</h2>
-                <span className="text-link">
+                <span className="link-action">
                   Open record <span aria-hidden="true">→</span>
                 </span>
               </div>
@@ -401,10 +401,10 @@ function ArtworkDetailPending() {
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
-        <span className="text-link">Reading object record…</span>
+        <span className="link-action">Reading object record…</span>
       </div>
       <div className="detail-layout page-frame detail-loading" aria-busy="true">
-        <div className="detail-image-column">
+        <div className="">
           <Skeleton className="detail-loading__image" />
           <Skeleton className="detail-loading__credit" />
         </div>
@@ -578,7 +578,7 @@ function ShareButton({ artwork }: { artwork: Artwork }) {
       type="button"
       variant="outline"
       size="lg"
-      className="record-link share-button"
+      className="record-link"
       onClick={handleShare}
       aria-label={copied ? "Link copied to clipboard" : "Copy object page link"}
     >
@@ -611,7 +611,7 @@ function ArtworkUnavailable({
     return (
       <main className="detail-page">
         <div className="page-frame detail-page__topline">
-          <Link to="/selection" className="text-link">
+          <Link to="/selection" className="link-action">
             <ArrowLeftIcon /> Back to Selection
           </Link>
           <span className="mono">Object {artwork.id}</span>
@@ -620,7 +620,7 @@ function ArtworkUnavailable({
           className="detail-layout page-frame"
           aria-labelledby="artwork-title"
         >
-          <div className="detail-image-column">
+          <div className="">
             <div className="detail-image-field">
               <ArtworkImage artwork={artwork} size="large" eager />
             </div>

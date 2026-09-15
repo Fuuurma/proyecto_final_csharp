@@ -41,7 +41,7 @@ function Home() {
     .filter((artwork): artwork is Artwork => Boolean(artwork));
 
   return (
-    <main className="home-page">
+    <main className="">
       <section className="hero page-frame" aria-labelledby="home-heading">
         <figure className="hero__image-panel">
           <Link
@@ -54,7 +54,7 @@ function Home() {
               artwork={featuredArtwork}
               size="large"
               eager
-              className="artwork-image--hero"
+              className=""
             />
           </Link>
           <figcaption className="hero__record">
@@ -106,7 +106,7 @@ function Home() {
           Not a museum homepage. Not a recommendation engine. Just a more
           considered way into a collection that is already open.
         </p>
-        <Link to="/about" className="text-link text-link--quiet">
+        <Link to="/about" className="link-action link-action--quiet">
           Read the premise <span aria-hidden="true">→</span>
         </Link>
       </section>
@@ -162,7 +162,7 @@ function Home() {
 
         <div className="home-gallery__footer">
           <span className="mono">A larger room, still bounded</span>
-          <Link to="/explore" className="text-link">
+          <Link to="/explore" className="link-action">
             Open all {curatedArtworks.length} objects{" "}
             <span aria-hidden="true">→</span>
           </Link>
@@ -209,7 +209,7 @@ function Home() {
                       path: path.slug,
                       department: undefined,
                     }}
-                    className="text-link"
+                    className="link-action"
                   >
                     Explore this path <span aria-hidden="true">→</span>
                   </Link>
@@ -255,7 +255,7 @@ function Home() {
                   <span className="mono">{count} review works</span>
                   <h3>{department.name}</h3>
                   <p>{department.description}</p>
-                  <span className="text-link">
+                  <span className="link-action">
                     Open department <span aria-hidden="true">→</span>
                   </span>
                 </div>
@@ -263,9 +263,9 @@ function Home() {
             );
           })}
         </div>
-        <div className="home-gallery__footer collection-index__footer">
+        <div className="home-gallery__footer">
           <span className="mono">The rest of the museum rooms</span>
-          <Link to="/departments" className="text-link">
+          <Link to="/departments" className="link-action">
             Open the department index <span aria-hidden="true">→</span>
           </Link>
         </div>
@@ -285,7 +285,7 @@ function Home() {
             and metadata that tells you when something is missing.
           </p>
         </div>
-        <Link to="/about" className="text-link collection-note__link">
+        <Link to="/about" className="link-action collection-note__link">
           Read the source note <span aria-hidden="true">→</span>
         </Link>
       </section>

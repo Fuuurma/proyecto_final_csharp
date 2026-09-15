@@ -9,7 +9,13 @@ import {
 } from "react";
 import type { Artwork } from "./met/normalize";
 
-const STORAGE_KEY = "meet-the-met.selection";
+export const STORAGE_KEY = "meet-the-met.selection";
+/**
+ * Stored-payload schema version. v0 wrote a bare SelectionItem[]; v1 wraps
+ * it in { version, items } so a future required-field addition can migrate
+ * instead of silently dropping the whole selection (needs-work 09-05).
+ */
+const SELECTION_VERSION = 1;
 
 export type SelectionItem = Pick<
   Artwork,
@@ -53,6 +59,18 @@ export function moveSelectionItem(
   return next;
 }
 
+/**
+ * Single recovery policy for a missing or corrupt stored ratio: default to
+ * 1. migrateStoredItem and artworkFromSelectionItem share it so a stored
+ * item is never recovered differently at parse time vs rebuild time
+ * (review 09-14 P3).
+ */
+function selectionAspectRatio(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : 1;
+}
+
 export function artworkFromSelectionItem(item: SelectionItem): Artwork {
   return {
     id: item.id,
@@ -73,10 +91,7 @@ export function artworkFromSelectionItem(item: SelectionItem): Artwork {
     primaryImage: item.primaryImage ?? item.primaryImageSmall,
     primaryImageSmall: item.primaryImageSmall,
     additionalImages: [],
-    imageAspectRatio:
-      typeof item.imageAspectRatio === "number" && item.imageAspectRatio > 0
-        ? item.imageAspectRatio
-        : 1,
+    imageAspectRatio: selectionAspectRatio(item.imageAspectRatio),
     isPublicDomain: true,
     rights: null,
     creditLine: null,
@@ -97,20 +112,166 @@ export function selectionItemFromArtwork(artwork: Artwork): SelectionItem {
   };
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
 function isSelectionItem(value: unknown): value is SelectionItem {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<SelectionItem>;
-  return typeof item.id === "number" && typeof item.displayTitle === "string";
+  return (
+    typeof item.id === "number" &&
+    typeof item.displayTitle === "string" &&
+    isNullableString(item.artist) &&
+    isNullableString(item.date) &&
+    isNullableString(item.primaryImage) &&
+    isNullableString(item.primaryImageSmall) &&
+    typeof item.imageAspectRatio === "number" &&
+    Number.isFinite(item.imageAspectRatio) &&
+    item.imageAspectRatio > 0
+  );
 }
 
-function readSelection(): SelectionItem[] {
+function migrateStoredItem(value: unknown): SelectionItem | null {
+  if (!value || typeof value !== "object") return null;
+  const item = { ...(value as Partial<SelectionItem>) };
+  // primaryImage joined the stored shape after launch — fill it from the
+  // small asset, the same fallback artworkFromSelectionItem applies.
+  item.primaryImage ??= item.primaryImageSmall;
+  item.imageAspectRatio = selectionAspectRatio(item.imageAspectRatio);
+  return isSelectionItem(item) ? item : null;
+}
+
+function migrateItems(candidates: unknown): SelectionItem[] {
+  if (!Array.isArray(candidates)) return [];
+  const items: SelectionItem[] = [];
+  const seen = new Set<number>();
+  for (const candidate of candidates) {
+    const item = migrateStoredItem(candidate);
+    // Duplicated ids produce duplicate React keys and divergent remove-all
+    // vs move/has behavior — keep only the first stored copy.
+    if (item && !seen.has(item.id)) {
+      seen.add(item.id);
+      items.push(item);
+    }
+  }
+  return items;
+}
+
+function readEnvelopeItems(stored: unknown): SelectionItem[] {
+  return migrateItems(
+    stored !== null && typeof stored === "object"
+      ? (stored as { items?: unknown }).items
+      : undefined,
+  );
+}
+
+/**
+ * Migration table: key = stored `version`, value = reader that turns that
+ * payload shape into current items. v0 is the pre-envelope bare array,
+ * normalized to { items } before dispatch. Add a reader for every new
+ * SELECTION_VERSION so older payloads keep loading; a stored version with
+ * no reader belongs to a newer build and must never be re-stamped over
+ * (review 09-14 P1). Partial keeps "no reader" inside the type system —
+ * without it, indexing claimed every version had a reader and tsc could
+ * not see the unsupported-version fallback (review 09-14 P3).
+ */
+const SELECTION_MIGRATIONS: Partial<
+  Record<number, (stored: unknown) => SelectionItem[]>
+> = {
+  0: readEnvelopeItems,
+  1: readEnvelopeItems,
+};
+
+/**
+ * Read result for the stored payload. "ok" carries usable items (possibly
+ * empty); "unsupported-version" means a newer build owns the payload — it
+ * hydrates nothing here and is never clobbered.
+ */
+export type ParsedStoredSelection =
+  | { status: "ok"; items: SelectionItem[] }
+  | { status: "unsupported-version"; version: number };
+
+/** Parses the raw localStorage payload, dispatching on `version`. */
+export function parseStoredSelection(
+  raw: string | null,
+): ParsedStoredSelection {
+  if (!raw) return { status: "ok", items: [] };
+  let parsed: unknown;
   try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) return [];
-    const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed.filter(isSelectionItem) : [];
+    parsed = JSON.parse(raw);
+  } catch {
+    return { status: "ok", items: [] };
+  }
+  const version = Array.isArray(parsed)
+    ? 0
+    : parsed !== null && typeof parsed === "object"
+      ? (parsed as { version?: unknown }).version
+      : undefined;
+  if (typeof version !== "number") return { status: "ok", items: [] };
+  const stored = Array.isArray(parsed) ? { items: parsed } : parsed;
+  const migrate = SELECTION_MIGRATIONS[version];
+  return migrate
+    ? { status: "ok", items: migrate(stored) }
+    : { status: "unsupported-version", version };
+}
+
+type SelectionStorage = Pick<Storage, "getItem" | "setItem">;
+
+function localStorageOrNull(): SelectionStorage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function readSelection(storage: SelectionStorage): SelectionItem[] {
+  try {
+    const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
+    // A newer build's envelope hydrates nothing here but stays on disk
+    // for the version that can read it.
+    return stored.status === "ok" ? stored.items : [];
   } catch {
     return [];
+  }
+}
+
+export function persistSelection(
+  storage: SelectionStorage,
+  items: SelectionItem[],
+): void {
+  try {
+    // Never re-stamp over an unsupported-version payload: this build
+    // cannot represent it, and overwriting would destroy data a future
+    // migration could still recover (review 09-14 P1). The refusal must
+    // not be silent — saves and clears no-op while the newer payload is
+    // preserved (review 09-14 P3).
+    // TODO: surface a "selection changes are not being saved" notice in
+    // the tray while an unsupported-version payload owns the key.
+    const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
+    if (stored.status === "unsupported-version") {
+      console.warn(
+        `[selection] stored payload has version ${stored.version}, which this build cannot read; keeping it on disk and skipping this write`,
+      );
+      return;
+    }
+    // An empty selection on a key-less storage stays key-less: writing
+    // here would stamp {"items":[]} for every first-time visitor and
+    // erase the no-key vs empty-selection distinction (needs-work
+    // 09-15 06:16 P3). Pre-existing keys still update (clearing the
+    // last item must persist).
+    if (items.length === 0 && storage.getItem(STORAGE_KEY) === null) {
+      return;
+    }
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ version: SELECTION_VERSION, items }),
+    );
+  } catch {
+    // Private mode / quota-exceeded: the in-memory tray keeps working,
+    // persistence just degrades for this visit. Mirrors readSelection's
+    // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
   }
 }
 
@@ -140,8 +301,16 @@ export function selectionReducer(
   action: SelectionAction,
 ): SelectionState {
   switch (action.type) {
-    case "hydrate":
-      return state.items.length > 0 ? state : { ...state, items: action.items };
+    case "hydrate": {
+      if (state.items.length === 0) return { ...state, items: action.items };
+      // Pre-hydration edits landed — merge instead of dropping either
+      // side (needs-work 09-15 00:01 P3: the old guard discarded the
+      // stored payload wholesale once any item existed). Stored
+      // uniques keep their order behind the live edits.
+      const existing = new Set(state.items.map((i) => i.id));
+      const storedNew = action.items.filter((i) => !existing.has(i.id));
+      return { ...state, items: [...state.items, ...storedNew] };
+    }
     case "toggle": {
       const alreadySaved = state.items.some(
         (item) => item.id === action.artwork.id,
@@ -198,19 +367,18 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    dispatch({ type: "hydrate", items: readSelection() });
+    const storage = localStorageOrNull();
+    dispatch({
+      type: "hydrate",
+      items: storage ? readSelection(storage) : [],
+    });
     setIsHydrated(true);
   }, []);
 
   useEffect(() => {
     if (!isHydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch {
-      // Private mode / quota-exceeded: the in-memory tray keeps working,
-      // persistence just degrades for this visit. Mirrors readSelection's
-      // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
-    }
+    const storage = localStorageOrNull();
+    if (storage) persistSelection(storage, items);
   }, [isHydrated, items]);
 
   const has = useCallback(

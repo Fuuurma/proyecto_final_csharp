@@ -31,3 +31,9 @@ test-results/
 .cursor/hooks.json
 .pnpm-store/
 .dev.vars
+
+# repowise index (machine-local codebase intelligence)
+.repowise/
+
+# repowise API keys (local)
+.repowise/.env
