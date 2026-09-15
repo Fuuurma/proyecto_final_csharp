@@ -5,14 +5,18 @@ import { SaveButton } from "./save-button";
 
 type ArtworkCardProps = {
   artwork: Artwork;
+  /** Browse-sequence key the detail route uses for Previous/Next. */
+  seq?: string;
 };
 
-export function ArtworkCard({ artwork }: ArtworkCardProps) {
+export function ArtworkCard({ artwork, seq }: ArtworkCardProps) {
+  const search = seq ? { seq } : {};
   return (
     <article className="artwork-card">
       <Link
         to="/art/$objectId"
         params={{ objectId: String(artwork.id) }}
+        search={search}
         className="artwork-card__image-link"
       >
         <ArtworkImage artwork={artwork} />
@@ -24,7 +28,11 @@ export function ArtworkCard({ artwork }: ArtworkCardProps) {
             <span>{artwork.department ?? "Department unknown"}</span>
           </div>
           <h3>
-            <Link to="/art/$objectId" params={{ objectId: String(artwork.id) }}>
+            <Link
+              to="/art/$objectId"
+              params={{ objectId: String(artwork.id) }}
+              search={search}
+            >
               {artwork.displayTitle}
             </Link>
           </h3>

@@ -9,7 +9,8 @@ import {
 } from "react";
 import type { Artwork } from "./met/normalize";
 
-const STORAGE_KEY = "meet-the-met.selection";
+export const SELECTION_STORAGE_KEY = "meet-the-met.selection";
+export const STORAGE_VERSION = 1;
 
 export type SelectionItem = Pick<
   Artwork,
@@ -97,20 +98,100 @@ export function selectionItemFromArtwork(artwork: Artwork): SelectionItem {
   };
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
 function isSelectionItem(value: unknown): value is SelectionItem {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<SelectionItem>;
-  return typeof item.id === "number" && typeof item.displayTitle === "string";
+  return (
+    typeof item.id === "number" &&
+    isNullableString(item.displayTitle) &&
+    isNullableString(item.artist) &&
+    isNullableString(item.date) &&
+    isNullableString(item.primaryImage) &&
+    isNullableString(item.primaryImageSmall) &&
+    typeof item.imageAspectRatio === "number" &&
+    Number.isFinite(item.imageAspectRatio)
+  );
 }
 
-function readSelection(): SelectionItem[] {
+/**
+ * Selections stored before the versioned envelope were bare arrays of
+ * items that may predate the primaryImage/imageAspectRatio fields.
+ * Anything without a numeric id and a string title cannot be shown and
+ * is dropped; the rest is normalized into a complete SelectionItem.
+ */
+function migrateLegacyItem(value: unknown): SelectionItem | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<SelectionItem>;
+  if (typeof item.id !== "number" || typeof item.displayTitle !== "string") {
+    return null;
+  }
+  const primaryImageSmall =
+    typeof item.primaryImageSmall === "string" ? item.primaryImageSmall : null;
+  return {
+    id: item.id,
+    displayTitle: item.displayTitle,
+    artist: typeof item.artist === "string" ? item.artist : null,
+    date: typeof item.date === "string" ? item.date : null,
+    primaryImage:
+      typeof item.primaryImage === "string"
+        ? item.primaryImage
+        : primaryImageSmall,
+    primaryImageSmall,
+    imageAspectRatio:
+      typeof item.imageAspectRatio === "number" &&
+      Number.isFinite(item.imageAspectRatio) &&
+      item.imageAspectRatio > 0
+        ? item.imageAspectRatio
+        : 1,
+  };
+}
+
+export function parseStoredSelection(raw: string | null): SelectionItem[] {
+  if (!raw) return [];
+  let parsed: unknown;
   try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) return [];
-    const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed.filter(isSelectionItem) : [];
+    parsed = JSON.parse(raw);
   } catch {
     return [];
+  }
+  if (Array.isArray(parsed)) {
+    return parsed
+      .map(migrateLegacyItem)
+      .filter((item): item is SelectionItem => item !== null);
+  }
+  if (parsed && typeof parsed === "object") {
+    const envelope = parsed as { version?: unknown; items?: unknown };
+    if (envelope.version === STORAGE_VERSION && Array.isArray(envelope.items)) {
+      return envelope.items.filter(isSelectionItem);
+    }
+  }
+  return [];
+}
+
+export function readSelection(): SelectionItem[] {
+  try {
+    return parseStoredSelection(
+      window.localStorage.getItem(SELECTION_STORAGE_KEY),
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function writeSelection(items: SelectionItem[]): void {
+  try {
+    window.localStorage.setItem(
+      SELECTION_STORAGE_KEY,
+      JSON.stringify({ version: STORAGE_VERSION, items }),
+    );
+  } catch {
+    // Private mode / quota-exceeded: the in-memory tray keeps working,
+    // persistence just degrades for this visit. Mirrors readSelection's
+    // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
   }
 }
 
@@ -204,13 +285,7 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isHydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch {
-      // Private mode / quota-exceeded: the in-memory tray keeps working,
-      // persistence just degrades for this visit. Mirrors readSelection's
-      // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
-    }
+    writeSelection(items);
   }, [isHydrated, items]);
 
   const has = useCallback(

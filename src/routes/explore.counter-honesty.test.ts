@@ -31,4 +31,21 @@ describe("explore counter honesty", () => {
     expect(exploreSource).toContain("!fillExhausted");
     expect(exploreSource).toContain("No further open-access works surfaced");
   });
+
+  // `result.total` on met-source searches counts upstream hits before the
+  // open-access sieve — the button cannot promise a deliverable count
+  // (devin 09-10 08:17 #1). Exact sources (curated/fixture) keep theirs.
+  it("only prints a load count when the total is exact", () => {
+    expect(exploreSource).toContain('result.source !== "met"');
+    expect(exploreSource).toContain('"Load more"');
+  });
+
+  // The record-cap note must not fire from the inflated raw-total
+  // remaining once the usable stream ran out — the exhausted note owns
+  // that ending (devin 09-10 08:17 #2).
+  it("gates the cap note behind a not-yet-exhausted stream", () => {
+    expect(exploreSource).toMatch(
+      /atCap =[^;]*!fillExhausted[^;]*page >= SEARCH_MAX_PAGE/,
+    );
+  });
 });

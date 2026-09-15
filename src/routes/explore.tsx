@@ -4,7 +4,7 @@ import {
   useNavigate,
   useSearch,
 } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { ArtworkCard } from "@/components/artwork-card";
 import { CloseIcon, SearchIcon } from "@/components/icons";
@@ -29,6 +29,7 @@ import {
   exploreDepartmentSchema,
   isExploreDepartmentFilter,
 } from "@/data/departments";
+import { writeBrowseSequence } from "@/lib/browse-sequence";
 import { collectPages, dedupeById, type PageCache } from "@/lib/fill-pages";
 import type { Artwork } from "@/lib/met/normalize";
 import {
@@ -174,6 +175,11 @@ function Explore() {
   const works = pathWorks ?? dedupeById([...result.artworks, ...extra]);
   const total = pathWorks ? pathWorks.length : result.total;
   const remaining = Math.max(0, total - works.length);
+  // `result.total` for met-source searches counts upstream hits, not
+  // displayable rows — the open-access sieve drops an unknowable share —
+  // so the button must not promise a count it can't keep (devin 09-10
+  // 08:17 #1). Curated/fixture totals are exact slices and keep theirs.
+  const countIsExact = result.source !== "met";
   const nextCount = Math.min(SEARCH_PAGE_SIZE, remaining);
   const canLoadMore =
     isClient &&
@@ -183,7 +189,28 @@ function Explore() {
     remaining > 0 &&
     page < SEARCH_MAX_PAGE &&
     result.status !== "error";
-  const atCap = live && !shownPath && remaining > 0 && page >= SEARCH_MAX_PAGE;
+  // The cap note explains records left beyond the browse ceiling; when
+  // the usable stream already ran out (fillExhausted), that note owns the
+  // ending and a raw-total-derived `remaining` must not also fire the cap
+  // (devin 09-10 08:17 #2).
+  const atCap =
+    live &&
+    !shownPath &&
+    !fillExhausted &&
+    remaining > 0 &&
+    page >= SEARCH_MAX_PAGE;
+
+  // The displayed order is the sequence the detail route's Previous/Next
+  // follows — persist it under the search identity so live-fetched works
+  // get working neighbors too (devin 09-09 06:17 P1).
+  const seqIds = works.map((work) => work.id).join(",");
+  const lastWrittenSeq = useRef("");
+  useEffect(() => {
+    const sig = `${searchKey}#${seqIds}`;
+    if (lastWrittenSeq.current === sig) return;
+    lastWrittenSeq.current = sig;
+    writeBrowseSequence(searchKey, works);
+  }, [searchKey, seqIds, works]);
 
   useEffect(() => setIsClient(true), []);
 
@@ -526,7 +553,7 @@ function Explore() {
         <>
           <section className="artwork-grid" aria-label="Collection results">
             {works.map((artwork) => (
-              <ArtworkCard key={artwork.id} artwork={artwork} />
+              <ArtworkCard key={artwork.id} artwork={artwork} seq={searchKey} />
             ))}
           </section>
           {canLoadMore ? (
@@ -540,7 +567,11 @@ function Explore() {
                 disabled={isFilling}
                 onClick={loadMore}
               >
-                {isFilling ? "Loading more…" : `Load ${nextCount} more`}
+                {isFilling
+                  ? "Loading more…"
+                  : countIsExact
+                    ? `Load ${nextCount} more`
+                    : "Load more"}
               </Button>
             </div>
           ) : null}
