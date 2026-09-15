@@ -187,7 +187,7 @@ function ArtworkDetail() {
         className="detail-layout page-frame"
         aria-labelledby="artwork-title"
       >
-        <div className="detail-image-column">
+        <div className="">
           {/* Remount per object: ArtworkStage holds activeSrc in state —
               without the key, prev/next navigation kept showing the
               previous object's image until a tab was clicked, and a
@@ -322,7 +322,7 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.previous.id) }}
-              className="detail-sequence__link detail-sequence__link--previous"
+              className="detail-sequence__link"
             >
               <ArtworkImage artwork={adjacent.previous} />
               <div className="detail-sequence__copy">
@@ -404,7 +404,7 @@ function ArtworkDetailPending() {
         <span className="link-action">Reading object record…</span>
       </div>
       <div className="detail-layout page-frame detail-loading" aria-busy="true">
-        <div className="detail-image-column">
+        <div className="">
           <Skeleton className="detail-loading__image" />
           <Skeleton className="detail-loading__credit" />
         </div>
@@ -620,7 +620,7 @@ function ArtworkUnavailable({
           className="detail-layout page-frame"
           aria-labelledby="artwork-title"
         >
-          <div className="detail-image-column">
+          <div className="">
             <div className="detail-image-field">
               <ArtworkImage artwork={artwork} size="large" eager />
             </div>

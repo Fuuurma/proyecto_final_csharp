@@ -41,7 +41,7 @@ function Home() {
     .filter((artwork): artwork is Artwork => Boolean(artwork));
 
   return (
-    <main className="home-page">
+    <main className="">
       <section className="hero page-frame" aria-labelledby="home-heading">
         <figure className="hero__image-panel">
           <Link
@@ -263,7 +263,7 @@ function Home() {
             );
           })}
         </div>
-        <div className="home-gallery__footer collection-index__footer">
+        <div className="home-gallery__footer">
           <span className="mono">The rest of the museum rooms</span>
           <Link to="/departments" className="link-action">
             Open the department index <span aria-hidden="true">→</span>

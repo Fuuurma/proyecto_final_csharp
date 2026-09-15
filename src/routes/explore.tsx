@@ -746,7 +746,7 @@ function ExploreSearchForm({
           ) : null}
         </Field>
       </FieldGroup>
-      <Button type="submit" size="lg" className="search-submit">
+      <Button type="submit" size="lg" className="">
         Search
       </Button>
     </form>
