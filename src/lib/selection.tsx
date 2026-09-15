@@ -256,6 +256,14 @@ export function persistSelection(
       );
       return;
     }
+    // An empty selection on a key-less storage stays key-less: writing
+    // here would stamp {"items":[]} for every first-time visitor and
+    // erase the no-key vs empty-selection distinction (needs-work
+    // 09-15 06:16 P3). Pre-existing keys still update (clearing the
+    // last item must persist).
+    if (items.length === 0 && storage.getItem(STORAGE_KEY) === null) {
+      return;
+    }
     storage.setItem(
       STORAGE_KEY,
       JSON.stringify({ version: SELECTION_VERSION, items }),

@@ -196,6 +196,24 @@ describe("selection storage read/write", () => {
     });
   });
 
+  it("first-time visitor with an empty selection creates no storage key", () => {
+    // needs-work 09-15 06:16 P3: persisting the empty hydrate result
+    // stamped {"items":[]} under the key for every visitor, erasing
+    // the no-key vs empty-selection distinction.
+    const storage = createStorageStub();
+    persistSelection(storage, []);
+    expect(storage.stored()).toBeNull();
+  });
+
+  it("clearing the last item still persists the empty selection", () => {
+    // Pre-existing keys keep updating — removals must persist.
+    const storage = createStorageStub(
+      JSON.stringify({ version: 1, items: [{ id: 1 }] }),
+    );
+    persistSelection(storage, []);
+    expect(storage.stored()).not.toBeNull();
+  });
+
   it("hydrate-then-write upgrades a v0 bare array to the v1 envelope", () => {
     const legacy = { ...item } as Partial<typeof item>;
     delete legacy.primaryImage;
