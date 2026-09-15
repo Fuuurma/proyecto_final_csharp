@@ -10,6 +10,12 @@ import {
 import type { Artwork } from "./met/normalize";
 
 const STORAGE_KEY = "meet-the-met.selection";
+/**
+ * Stored-payload schema version. v0 wrote a bare SelectionItem[]; v1 wraps
+ * it in { version, items } so a future required-field addition can migrate
+ * instead of silently dropping the whole selection (needs-work 09-05).
+ */
+const SELECTION_VERSION = 1;
 
 export type SelectionItem = Pick<
   Artwork,
@@ -97,18 +103,60 @@ export function selectionItemFromArtwork(artwork: Artwork): SelectionItem {
   };
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
 function isSelectionItem(value: unknown): value is SelectionItem {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<SelectionItem>;
-  return typeof item.id === "number" && typeof item.displayTitle === "string";
+  return (
+    typeof item.id === "number" &&
+    typeof item.displayTitle === "string" &&
+    isNullableString(item.artist) &&
+    isNullableString(item.date) &&
+    isNullableString(item.primaryImage) &&
+    isNullableString(item.primaryImageSmall) &&
+    typeof item.imageAspectRatio === "number"
+  );
+}
+
+function migrateStoredItem(value: unknown): SelectionItem | null {
+  if (!value || typeof value !== "object") return null;
+  const item = { ...(value as Partial<SelectionItem>) };
+  // primaryImage joined the stored shape after launch — fill it from the
+  // small asset, the same fallback artworkFromSelectionItem applies.
+  item.primaryImage ??= item.primaryImageSmall;
+  return isSelectionItem(item) ? item : null;
+}
+
+/** Parses the raw localStorage payload: v0 bare array or v1+ envelope. */
+export function parseStoredSelection(raw: string | null): SelectionItem[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  const candidates = Array.isArray(parsed)
+    ? parsed
+    : parsed !== null &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as { items?: unknown }).items)
+      ? (parsed as { items: unknown[] }).items
+      : [];
+  const items: SelectionItem[] = [];
+  for (const candidate of candidates) {
+    const item = migrateStoredItem(candidate);
+    if (item) items.push(item);
+  }
+  return items;
 }
 
 function readSelection(): SelectionItem[] {
   try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) return [];
-    const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed.filter(isSelectionItem) : [];
+    return parseStoredSelection(window.localStorage.getItem(STORAGE_KEY));
   } catch {
     return [];
   }
@@ -205,7 +253,10 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isHydrated) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ version: SELECTION_VERSION, items }),
+      );
     } catch {
       // Private mode / quota-exceeded: the in-memory tray keeps working,
       // persistence just degrades for this visit. Mirrors readSelection's
