@@ -233,17 +233,21 @@ describe("selection storage read/write", () => {
     // storage) must normalize to 1, or the custom property vanishes and
     // the layout breaks (selectionAspectRatio fallback, unpinned until
     // now).
+    // imageAspectRatio: undefined is a legal v0 state handled upstream
+    // by the hydrate merge - the write-path guard covers the junk cases.
     const bogus = [
-      { ...item, imageAspectRatio: undefined },
-      { ...second, imageAspectRatio: Number.NaN },
-      { ...item, id: "third", imageAspectRatio: -2 },
-      { ...second, id: "fourth", imageAspectRatio: 0 },
+      { ...item, imageAspectRatio: Number.NaN },
+      { ...second, imageAspectRatio: -2 },
+      { ...item, id: 43, imageAspectRatio: 0 },
+      { ...second, id: 44, imageAspectRatio: 2.5 },
     ];
+    // The last entry proves valid ratios pass through untouched.
     const storage = createStorageStub();
     persistSelection(storage, bogus);
     const round = readSelection(storage);
     for (const normalized of round) {
-      expect(normalized.imageAspectRatio, normalized.id).toBe(1);
+      const expected = normalized.id === 44 ? 2.5 : 1;
+      expect(normalized.imageAspectRatio, String(normalized.id)).toBe(expected);
     }
   });
 
