@@ -27,3 +27,18 @@ describe("selection announcements", () => {
     expect(regions).toHaveLength(1);
   });
 });
+
+/**
+ * needs-work 09-15 P3: imageless saves and 404ed URLs used to render as
+ * empty tray slots reading as "loading". The tray must carry an honest
+ * missing/broken state (TrayThumb), mirroring artwork-image.
+ */
+describe("selection tray thumb states", () => {
+  it("tray thumbs handle missing and broken images explicitly", () => {
+    expect(traySource).toContain("selection-tray__thumb-missing");
+    expect(traySource).toContain("onError");
+    // The empty-slot no-op must not return: a thumb renders either the
+    // image or the placeholder, never null.
+    expect(traySource).not.toMatch(/return null;\s*\}\)\(\)/);
+  });
+});
