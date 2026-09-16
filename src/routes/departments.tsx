@@ -10,6 +10,9 @@ import {
 import { listDepartments } from "@/lib/met/server-functions";
 
 export const Route = createFileRoute("/departments")({
+  // Loader before head — tanstack-start-route-property-order (react-doctor
+  // 09-16): data properties first keep head's inference anchored.
+  loader: () => listDepartments(),
   head: () => ({
     meta: [
       { title: "Departments — Meet the Met" },
@@ -25,7 +28,6 @@ export const Route = createFileRoute("/departments")({
       },
     ],
   }),
-  loader: () => listDepartments(),
   component: Departments,
 });
 
