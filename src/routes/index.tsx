@@ -50,12 +50,7 @@ function Home() {
             className="hero__image-link"
             aria-label={`${featuredArtwork.displayTitle}${featuredArtwork.artist ? `, ${featuredArtwork.artist}` : ""}`}
           >
-            <ArtworkImage
-              artwork={featuredArtwork}
-              size="large"
-              eager
-
-            />
+            <ArtworkImage artwork={featuredArtwork} size="large" eager />
           </Link>
           <figcaption className="hero__record">
             <span className="eyebrow">Featured object</span>
