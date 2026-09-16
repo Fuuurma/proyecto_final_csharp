@@ -227,12 +227,15 @@ describe("selection storage read/write", () => {
     });
   });
 
-  it("normalizes bogus aspect ratios to square on write", () => {
-    // The tray sizes thumbs with aspect-(--tray-ratio): a legacy save
-    // without the field (or with NaN/0/negative junk from hand-edited
-    // storage) must normalize to 1, or the custom property vanishes and
-    // the layout breaks (selectionAspectRatio fallback, unpinned until
-    // now).
+  it("bogus aspect ratios normalize to square through a persist round-trip", () => {
+    // The tray sizes thumbs with aspect-(--tray-ratio): junk values must
+    // normalize to 1 or the custom property vanishes and the layout
+    // breaks. The normalization is READ-side (reviveItem →
+    // selectionAspectRatio); persistSelection writes JSON.stringify, so
+    // NaN lands as null on disk and the read path does the repair —
+    // misnamed "on write" until the 09-17 survey.
+    // (Legacy saves missing the field entirely are covered by the v0
+    // upgrade pin above.)
     // imageAspectRatio: undefined is a legal v0 state handled upstream
     // by the hydrate merge - the write-path guard covers the junk cases.
     const bogus = [
