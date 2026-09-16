@@ -174,7 +174,7 @@ function Selection() {
                     to="/art/$objectId"
                     params={{ objectId: String(item.id) }}
                     className="selection-row__image"
-                    aria-label={item.displayTitle ?? `Object ${item.id}`}
+                    aria-label={item.displayTitle}
                   >
                     {/* The stored item is the row's single source — image
                         AND announced name come from the same snapshot, so
