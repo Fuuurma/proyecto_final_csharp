@@ -227,6 +227,26 @@ describe("selection storage read/write", () => {
     });
   });
 
+  it("normalizes bogus aspect ratios to square on write", () => {
+    // The tray sizes thumbs with aspect-(--tray-ratio): a legacy save
+    // without the field (or with NaN/0/negative junk from hand-edited
+    // storage) must normalize to 1, or the custom property vanishes and
+    // the layout breaks (selectionAspectRatio fallback, unpinned until
+    // now).
+    const bogus = [
+      { ...item, imageAspectRatio: undefined },
+      { ...second, imageAspectRatio: Number.NaN },
+      { ...item, id: "third", imageAspectRatio: -2 },
+      { ...second, id: "fourth", imageAspectRatio: 0 },
+    ];
+    const storage = createStorageStub();
+    persistSelection(storage, bogus);
+    const round = readSelection(storage);
+    for (const normalized of round) {
+      expect(normalized.imageAspectRatio, normalized.id).toBe(1);
+    }
+  });
+
   it("round-trips a save through storage and back", () => {
     const storage = createStorageStub();
     persistSelection(storage, [item, second]);
