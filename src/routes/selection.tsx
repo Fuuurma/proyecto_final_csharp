@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { curatedArtworks, featuredArtwork } from "@/data/curated-artworks";
+import { featuredArtwork } from "@/data/curated-artworks";
 import {
   artworkFromSelectionItem,
   type SelectionItem,
@@ -168,31 +168,22 @@ function Selection() {
           </div>
           <div className="selection-room">
             {items.map((item, index) => {
-              const artwork = curatedArtworks.find(
-                (candidate) => candidate.id === item.id,
-              );
               return (
                 <article className="selection-row" key={item.id}>
                   <Link
                     to="/art/$objectId"
                     params={{ objectId: String(item.id) }}
                     className="selection-row__image"
-                    aria-label={
-                      artwork?.displayTitle ??
-                      item.displayTitle ??
-                      `Object ${item.id}`
-                    }
+                    aria-label={item.displayTitle ?? `Object ${item.id}`}
                   >
-                    {artwork ? (
-                      <ArtworkImage artwork={artwork} />
-                    ) : (
-                      // Offline/no-hydrated fallback: reconstruct from the
-                      // stored item so the small->large image fallback and
-                      // the honest missing panel still apply (glm-5-2
-                      // 09-10 14:57 #4 — a primaryImage-only save used to
-                      // render a blank slot).
-                      <ArtworkImage artwork={artworkFromSelectionItem(item)} />
-                    )}
+                    {/* The stored item is the row's single source — image
+                        AND announced name come from the same snapshot, so
+                        a catalog update (or hand-edited storage) can't
+                        make the link announce something other than the
+                        sighted title (needs-work 09-16; offline path
+                        precedent: artworkFromSelectionItem was already
+                        the fallback renderer). */}
+                    <ArtworkImage artwork={artworkFromSelectionItem(item)} />
                   </Link>
                   <div className="selection-row__meta">
                     <span className="selection-row__index mono">
