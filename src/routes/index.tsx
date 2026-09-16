@@ -41,7 +41,7 @@ function Home() {
     .filter((artwork): artwork is Artwork => Boolean(artwork));
 
   return (
-    <main className="">
+    <main>
       <section className="hero page-frame" aria-labelledby="home-heading">
         <figure className="hero__image-panel">
           <Link
@@ -54,7 +54,7 @@ function Home() {
               artwork={featuredArtwork}
               size="large"
               eager
-              className=""
+
             />
           </Link>
           <figcaption className="hero__record">
