@@ -297,7 +297,11 @@ export async function fetchMetObjects(
   // Partial hydration tolerates individual failures, but a total failure
   // must propagate so callers can report an outage instead of an empty
   // room (devin 09-02: fetchMetObjects swallowed every error to null).
-  if (artworks.length === 0 && objectIds.length > 0 && firstError !== undefined) {
+  if (
+    artworks.length === 0 &&
+    objectIds.length > 0 &&
+    firstError !== undefined
+  ) {
     throw firstError;
   }
   return artworks;

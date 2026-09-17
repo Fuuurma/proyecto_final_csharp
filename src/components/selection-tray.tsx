@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
 import { ChevronDownIcon } from "@/components/icons";
-import { useSelection, type SelectionItem } from "@/lib/selection";
+import { type SelectionItem, useSelection } from "@/lib/selection";
 
 export function SelectionTray() {
   const { items, isHydrated } = useSelection();
@@ -76,12 +76,17 @@ function TrayThumb({ item }: { item: SelectionItem }) {
   const src = item.primaryImageSmall ?? item.primaryImage;
   if (!src || failed) {
     return (
-      <span className="selection-tray__thumb-missing" title="No image available">
+      <span
+        className="selection-tray__thumb-missing"
+        title="No image available"
+      >
         <span className="selection-tray__thumb-missing-mark" aria-hidden="true">
           ×
         </span>
       </span>
     );
   }
-  return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />;
+  return (
+    <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />
+  );
 }
