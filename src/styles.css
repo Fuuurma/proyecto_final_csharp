@@ -2349,8 +2349,27 @@ img {
 }
 
 .selection-tray {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
   border-top: 1px solid var(--rule);
   background: var(--paper);
+  box-shadow: 0 -1px 0 var(--rule);
+}
+
+/* DESIGN.md:96 — the tray confirms saves WITHOUT blocking: fixed to the
+   viewport bottom (grok 09-17 #1, verified in-flow below the fold at
+   __root.tsx:143). Content gets breathing room via the body padding
+   below; when nothing is selected the component renders null, so :has
+   matches only when the tray exists. */
+body:has(.selection-tray) {
+  padding-bottom: 6rem;
+}
+
+body:has(.selection-tray.is-collapsed) {
+  padding-bottom: 3.5rem;
 }
 
 .selection-tray__inner {
