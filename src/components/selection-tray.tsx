@@ -76,17 +76,12 @@ function TrayThumb({ item }: { item: SelectionItem }) {
   const src = item.primaryImageSmall ?? item.primaryImage;
   if (!src || failed) {
     return (
-      <span
-        className="selection-tray__thumb-missing"
-        title="No image available"
-      >
+      <span className="selection-tray__thumb-missing" title="No image available">
         <span className="selection-tray__thumb-missing-mark" aria-hidden="true">
           ×
         </span>
       </span>
     );
   }
-  return (
-    <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />
-  );
+  return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />;
 }
