@@ -268,6 +268,7 @@ export async function fetchMetObjects(
     1,
     Math.min(options.concurrency ?? 4, objectIds.length || 1),
   );
+  let firstError: unknown;
 
   async function worker(): Promise<void> {
     while (queue.length > 0) {
@@ -284,10 +285,24 @@ export async function fetchMetObjects(
           error,
         );
         results[next.index] = null;
+        firstError ??= error;
       }
     }
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
-  return results.filter((artwork): artwork is Artwork => artwork !== null);
+  const artworks = results.filter(
+    (artwork): artwork is Artwork => artwork !== null,
+  );
+  // Partial hydration tolerates individual failures, but a total failure
+  // must propagate so callers can report an outage instead of an empty
+  // room (devin 09-02: fetchMetObjects swallowed every error to null).
+  if (
+    artworks.length === 0 &&
+    objectIds.length > 0 &&
+    firstError !== undefined
+  ) {
+    throw firstError;
+  }
+  return artworks;
 }

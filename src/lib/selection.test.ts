@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Artwork } from "./met/normalize";
 import {
   artworkFromSelectionItem,
   emptySelectionState,
   moveSelectionItem,
+  parseStoredSelection,
+  persistSelection,
+  readSelection,
   type SelectionState,
+  STORAGE_KEY,
   selectionItemFromArtwork,
   selectionReducer,
 } from "./selection";
@@ -70,6 +74,221 @@ describe("artworkFromSelectionItem legacy fallback", () => {
     delete (legacy as { primaryImage?: string }).primaryImage;
     const local = artworkFromSelectionItem(legacy);
     expect(local.primaryImage).toBe("https://example.com/work.jpg");
+  });
+});
+
+describe("parseStoredSelection", () => {
+  const item = selectionItemFromArtwork(artwork);
+
+  it("migrates a legacy v0 bare array deterministically", () => {
+    const legacy = { ...item } as Partial<typeof item>;
+    delete legacy.primaryImage;
+    expect(parseStoredSelection(JSON.stringify([legacy]))).toEqual({
+      status: "ok",
+      items: [{ ...legacy, primaryImage: legacy.primaryImageSmall }],
+    });
+  });
+
+  it("reads the versioned envelope written by the current build", () => {
+    const stored = JSON.stringify({ version: 1, items: [item] });
+    expect(parseStoredSelection(stored)).toEqual({
+      status: "ok",
+      items: [item],
+    });
+  });
+
+  it("drops only the off-shape item, keeping valid siblings", () => {
+    const missingField = { ...item } as Partial<typeof item>;
+    delete missingField.displayTitle;
+    const wrongType = { ...item, artist: 42 };
+    const stored = JSON.stringify({
+      version: 1,
+      items: [item, missingField, wrongType, null, "junk"],
+    });
+    expect(parseStoredSelection(stored)).toEqual({
+      status: "ok",
+      items: [item],
+    });
+  });
+
+  it("returns an empty selection for non-JSON or non-payload shapes", () => {
+    expect(parseStoredSelection(null)).toEqual({ status: "ok", items: [] });
+    expect(parseStoredSelection("{not json")).toEqual({
+      status: "ok",
+      items: [],
+    });
+    expect(parseStoredSelection(JSON.stringify({ items: "no" }))).toEqual({
+      status: "ok",
+      items: [],
+    });
+    expect(parseStoredSelection(JSON.stringify(42))).toEqual({
+      status: "ok",
+      items: [],
+    });
+  });
+
+  it("flags a stored version with no migration as unsupported", () => {
+    const future = JSON.stringify({ version: 2, items: [item] });
+    expect(parseStoredSelection(future)).toEqual({
+      status: "unsupported-version",
+      version: 2,
+    });
+  });
+
+  it("dedupes repeated ids, keeping the first stored copy", () => {
+    const duplicate = { ...item, displayTitle: "Duplicate copy" };
+    const stored = JSON.stringify({ version: 1, items: [item, duplicate] });
+    expect(parseStoredSelection(stored)).toEqual({
+      status: "ok",
+      items: [item],
+    });
+  });
+
+  it("recovers an absent or non-positive imageAspectRatio to the rebuild fallback", () => {
+    // migrateStoredItem must agree with artworkFromSelectionItem, which
+    // defaults a bad ratio to 1 — dropping the whole item would lose a
+    // saved work over one corrupt field (review 09-14 P3).
+    const absent = { ...item, id: 43 } as Partial<typeof item>;
+    delete absent.imageAspectRatio;
+    const zero = { ...item, id: 44, imageAspectRatio: 0 };
+    const negative = { ...item, id: 45, imageAspectRatio: -2 };
+    const stored = JSON.stringify({
+      version: 1,
+      items: [absent, zero, negative],
+    });
+    expect(parseStoredSelection(stored)).toEqual({
+      status: "ok",
+      items: [
+        { ...item, id: 43, imageAspectRatio: 1 },
+        { ...item, id: 44, imageAspectRatio: 1 },
+        { ...item, id: 45, imageAspectRatio: 1 },
+      ],
+    });
+  });
+});
+
+describe("selection storage read/write", () => {
+  const item = selectionItemFromArtwork(artwork);
+  const second = selectionItemFromArtwork({
+    ...artwork,
+    id: 7,
+    displayTitle: "Second work",
+  });
+
+  function createStorageStub(initial?: string) {
+    const map = new Map<string, string>();
+    if (initial !== undefined) map.set(STORAGE_KEY, initial);
+    return {
+      getItem: (key: string) => map.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        map.set(key, value);
+      },
+      stored: () => map.get(STORAGE_KEY) ?? null,
+    };
+  }
+
+  it("persists the {version, items} envelope under the selection key", () => {
+    const storage = createStorageStub();
+    persistSelection(storage, [item]);
+    expect(JSON.parse(storage.stored() ?? "null")).toEqual({
+      version: 1,
+      items: [item],
+    });
+  });
+
+  it("first-time visitor with an empty selection creates no storage key", () => {
+    // needs-work 09-15 06:16 P3: persisting the empty hydrate result
+    // stamped {"items":[]} under the key for every visitor, erasing
+    // the no-key vs empty-selection distinction.
+    const storage = createStorageStub();
+    persistSelection(storage, []);
+    expect(storage.stored()).toBeNull();
+  });
+
+  it("clearing the last item still persists the empty selection", () => {
+    // Pre-existing keys keep updating — removals must persist.
+    const storage = createStorageStub(
+      JSON.stringify({ version: 1, items: [{ id: 1 }] }),
+    );
+    persistSelection(storage, []);
+    expect(storage.stored()).not.toBeNull();
+  });
+
+  it("hydrate-then-write upgrades a v0 bare array to the v1 envelope", () => {
+    const legacy = { ...item } as Partial<typeof item>;
+    delete legacy.primaryImage;
+    const storage = createStorageStub(JSON.stringify([legacy]));
+
+    persistSelection(storage, readSelection(storage));
+
+    expect(JSON.parse(storage.stored() ?? "null")).toEqual({
+      version: 1,
+      items: [{ ...legacy, primaryImage: legacy.primaryImageSmall }],
+    });
+  });
+
+  it("bogus aspect ratios normalize to square through a persist round-trip", () => {
+    // The tray sizes thumbs with aspect-(--tray-ratio): junk values must
+    // normalize to 1 or the custom property vanishes and the layout
+    // breaks. The normalization is READ-side (reviveItem →
+    // selectionAspectRatio); persistSelection writes JSON.stringify, so
+    // NaN lands as null on disk and the read path does the repair —
+    // misnamed "on write" until the 09-17 survey.
+    // (Legacy saves missing the field entirely are covered by the v0
+    // upgrade pin above.)
+    // imageAspectRatio: undefined is a legal v0 state handled upstream
+    // by the hydrate merge - the write-path guard covers the junk cases.
+    const bogus = [
+      { ...item, imageAspectRatio: Number.NaN },
+      { ...second, imageAspectRatio: -2 },
+      { ...item, id: 43, imageAspectRatio: 0 },
+      { ...second, id: 44, imageAspectRatio: 2.5 },
+    ];
+    // The last entry proves valid ratios pass through untouched.
+    const storage = createStorageStub();
+    persistSelection(storage, bogus);
+    const round = readSelection(storage);
+    for (const normalized of round) {
+      const expected = normalized.id === 44 ? 2.5 : 1;
+      expect(normalized.imageAspectRatio, String(normalized.id)).toBe(expected);
+    }
+  });
+
+  it("round-trips a save through storage and back", () => {
+    const storage = createStorageStub();
+    persistSelection(storage, [item, second]);
+    expect(readSelection(storage)).toEqual([item, second]);
+  });
+
+  it("never clobbers an envelope written by a newer build", () => {
+    const foreign = JSON.stringify({ version: 2, items: [item] });
+    const storage = createStorageStub(foreign);
+
+    expect(readSelection(storage)).toEqual([]);
+    persistSelection(storage, [item]);
+
+    expect(storage.stored()).toBe(foreign);
+  });
+
+  it("warns instead of silently no-oping when a newer build owns the payload", () => {
+    const foreign = JSON.stringify({ version: 2, items: [item] });
+    const storage = createStorageStub(foreign);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    persistSelection(storage, [item]);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("version 2"));
+    expect(storage.stored()).toBe(foreign);
+    warn.mockRestore();
+  });
+
+  it("re-stamps over a corrupt payload, which holds nothing recoverable", () => {
+    const storage = createStorageStub("{not json");
+    persistSelection(storage, [item]);
+    expect(JSON.parse(storage.stored() ?? "null")).toEqual({
+      version: 1,
+      items: [item],
+    });
   });
 });
 
@@ -169,10 +388,17 @@ describe("selectionReducer", () => {
       items: stored,
     });
     expect(hydrated.items.map((i) => i.id)).toEqual([9]);
+  });
 
+  it("hydrate merges the stored payload with pre-hydration edits", () => {
+    // needs-work 09-15 00:01 P3: a toggle landing before the mount
+    // hydration effect used to make the hydrate a no-op, permanently
+    // discarding the stored selection. Merge instead — nothing is
+    // lost; stored uniques keep their order behind the live edits.
+    const stored = [selectionItemFromArtwork(makeArtwork(9, "Stored"))];
     const live = toggle(empty, 1, "Live");
-    const kept = selectionReducer(live, { type: "hydrate", items: stored });
-    expect(kept.items.map((i) => i.id)).toEqual([1]);
+    const merged = selectionReducer(live, { type: "hydrate", items: stored });
+    expect(merged.items.map((i) => i.id)).toEqual([1, 9]);
   });
 
   it("move announces the reordering to screen readers", () => {

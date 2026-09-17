@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { curatedArtworks, curatedPaths } from "./curated-artworks";
+import {
+  aboutSourceArtwork,
+  curatedArtworks,
+  curatedPaths,
+} from "./curated-artworks";
 
 /**
  * tests/journey.spec.ts navigates by curated IDs, path slugs, and
@@ -27,5 +31,17 @@ describe("journey.spec curated-data contract", () => {
     for (const id of path?.artworkIds ?? []) {
       expect(curatedIds.has(id), `path id ${id} must be curated`).toBe(true);
     }
+  });
+
+  it("keeps the about-page source artwork (Great Wave, 56353) curated", () => {
+    // about.tsx renders its hero image only when aboutSourceArtwork
+    // resolves — if 56353 left curatedArtworks the hero silently went
+    // empty (the muse-work 09-14 03:58 'resurrect' fix moved the lookup
+    // into a named export). departments.ts and homeGalleryIds reference
+    // the same id, so this is load-bearing in three places.
+    expect(
+      aboutSourceArtwork,
+      "56353 must stay curated — about hero, departments, and homeGalleryIds depend on it",
+    ).toBeDefined();
   });
 });

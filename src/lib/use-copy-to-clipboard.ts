@@ -12,19 +12,26 @@ const RESET_MS = 2000;
 export function useCopyToClipboard(resetMs: number = RESET_MS) {
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
-  const timers = useRef<number[]>([]);
+  // One tracked reset timer, cleared on re-copy: an array of timers let
+  // a stale reset fire mid-feedback on rapid re-copy, truncating the
+  // "Copied!" window (needs-work 09-17).
+  const resetTimer = useRef<number | null>(null);
 
-  useEffect(() => {
-    const pending = timers.current;
-    return () => {
-      for (const timer of pending) clearTimeout(timer);
-    };
-  }, []);
+  useEffect(
+    () => () => {
+      if (resetTimer.current !== null) clearTimeout(resetTimer.current);
+    },
+    [],
+  );
 
   const copy = useCallback(
     async (text: string): Promise<boolean> => {
       const schedule = (setState: () => void) => {
-        timers.current.push(window.setTimeout(setState, resetMs));
+        if (resetTimer.current !== null) clearTimeout(resetTimer.current);
+        resetTimer.current = window.setTimeout(() => {
+          resetTimer.current = null;
+          setState();
+        }, resetMs);
       };
       if (typeof navigator === "undefined" || !navigator.clipboard) {
         // Absent API (insecure context): say so instead of a silent

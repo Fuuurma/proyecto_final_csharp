@@ -48,6 +48,17 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
     page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
   ).toBeVisible();
 
+  // The persisted payload is the versioned envelope, and a reload
+  // rehydrates the saved state from it.
+  const stored = await page.evaluate(() =>
+    window.localStorage.getItem("meet-the-met.selection"),
+  );
+  expect(JSON.parse(stored ?? "null")).toMatchObject({ version: 1 });
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
+  ).toBeVisible();
+
   await selectionNav(page).click();
   await expect(page).toHaveURL(/\/selection$/);
   await expect(
