@@ -53,22 +53,8 @@ const exploreSearchSchema = z.object({
 });
 
 export const Route = createFileRoute("/explore")({
-  head: () => ({
-    meta: [
-      { title: "Explore — Meet the Met" },
-      {
-        name: "description",
-        content:
-          "Search the Open Access index by keyword, department, or curated path. Every result links to the canonical Met record.",
-      },
-      { property: "og:title", content: "Explore — Meet the Met" },
-      {
-        property: "og:description",
-        content:
-          "Search the Open Access index by keyword, department, or curated path.",
-      },
-    ],
-  }),
+  // validateSearch + loader before head —
+  // tanstack-start-route-property-order (react-doctor 09-16).
   validateSearch: (search) => {
     const parsed = exploreSearchSchema.safeParse(search);
     if (parsed.success) return parsed.data;
@@ -103,6 +89,22 @@ export const Route = createFileRoute("/explore")({
       },
     }),
   pendingComponent: ExplorePending,
+  head: () => ({
+    meta: [
+      { title: "Explore — Meet the Met" },
+      {
+        name: "description",
+        content:
+          "Search the Open Access index by keyword, department, or curated path. Every result links to the canonical Met record.",
+      },
+      { property: "og:title", content: "Explore — Meet the Met" },
+      {
+        property: "og:description",
+        content:
+          "Search the Open Access index by keyword, department, or curated path.",
+      },
+    ],
+  }),
   component: Explore,
 });
 
@@ -381,7 +383,7 @@ function Explore() {
         activePath ||
         departmentId !== undefined ||
         activeDepartment !== "all" ? (
-          <Link to="/explore" search={{}} className="text-link explore-clear">
+          <Link to="/explore" search={{}} className="link-action explore-clear">
             Return to review set <span aria-hidden="true">↗</span>
           </Link>
         ) : null}
@@ -407,7 +409,7 @@ function Explore() {
             );
           })}
         </div>
-        <Link to="/departments" className="text-link text-link--quiet">
+        <Link to="/departments" className="link-action link-action--quiet">
           All departments <span aria-hidden="true">→</span>
         </Link>
       </div>
@@ -488,7 +490,7 @@ function Explore() {
             <Link
               to="/explore"
               search={{}}
-              className="text-link active-filters__clear"
+              className="link-action active-filters__clear"
             >
               Reset all
             </Link>
@@ -634,8 +636,12 @@ function ExplorePending() {
           {[1, 2, 3, 4, 5, 6].map((index) => (
             <div className="artwork-skeleton" key={index}>
               <Skeleton
-                className="artwork-skeleton__image"
-                style={{ aspectRatio: index % 3 === 0 ? "0.78" : "1.12" }}
+                className="artwork-skeleton__image aspect-(--skel-ratio)"
+                style={
+                  {
+                    "--skel-ratio": index % 3 === 0 ? "0.78" : "1.12",
+                  } as import("react").CSSProperties
+                }
               />
               <Skeleton className="artwork-skeleton__line" />
               <Skeleton className="artwork-skeleton__title" />
@@ -742,7 +748,7 @@ function ExploreSearchForm({
           ) : null}
         </Field>
       </FieldGroup>
-      <Button type="submit" size="lg" className="search-submit">
+      <Button type="submit" size="lg">
         Search
       </Button>
     </form>

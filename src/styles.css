@@ -532,7 +532,7 @@ img {
   line-height: 1.25;
 }
 
-.text-link {
+.link-action {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
@@ -543,11 +543,11 @@ img {
   font-weight: 600;
 }
 
-.text-link:hover {
+.link-action:hover {
   color: var(--red);
 }
 
-.text-link--quiet {
+.link-action--quiet {
   color: var(--archive);
   font-weight: 400;
 }
@@ -845,11 +845,11 @@ img {
   font-size: 12px;
 }
 
-.collection-index__item .text-link {
+.collection-index__item .link-action {
   font-weight: 400;
 }
 
-.collection-index__item:hover .text-link,
+.collection-index__item:hover .link-action,
 .collection-index__item:hover h3 {
   color: var(--red);
 }
@@ -972,7 +972,7 @@ img {
     grid-template-columns: 2.25rem minmax(0, 1fr);
   }
 
-  .department-ledger__item .text-link {
+  .department-ledger__item .link-action {
     grid-column: 2;
   }
 }
@@ -1909,7 +1909,7 @@ img {
   border-bottom: 1px solid var(--rule);
 }
 
-.detail-page__topline .text-link {
+.detail-page__topline .link-action {
   border: 0;
   color: var(--archive);
   font-weight: 400;
@@ -2096,7 +2096,7 @@ img {
   gap: 1.5rem;
 }
 
-.detail-image-footer .text-link {
+.detail-image-footer .link-action {
   flex: 0 0 auto;
   color: var(--archive);
   font-weight: 400;
@@ -2281,7 +2281,7 @@ img {
 }
 
 .detail-sequence__link:hover h2,
-.detail-sequence__link:hover .text-link {
+.detail-sequence__link:hover .link-action {
   color: var(--red);
 }
 
@@ -2349,8 +2349,27 @@ img {
 }
 
 .selection-tray {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
   border-top: 1px solid var(--rule);
   background: var(--paper);
+  box-shadow: 0 -1px 0 var(--rule);
+}
+
+/* DESIGN.md:96 — the tray confirms saves WITHOUT blocking: fixed to the
+   viewport bottom (grok 09-17 #1, verified in-flow below the fold at
+   __root.tsx:143). Content gets breathing room via the body padding
+   below; when nothing is selected the component renders null, so :has
+   matches only when the tray exists. */
+body:has(.selection-tray) {
+  padding-bottom: 6rem;
+}
+
+body:has(.selection-tray.is-collapsed) {
+  padding-bottom: 3.5rem;
 }
 
 .selection-tray__inner {
@@ -2551,20 +2570,20 @@ img {
   background: var(--paper-deep);
 }
 
-.text-button,
+.button-quiet,
 .icon-button {
   border: 0;
   background: transparent;
   cursor: pointer;
 }
 
-.text-button {
+.button-quiet {
   padding: 0.35rem 0;
   border-bottom: 1px solid var(--ink);
   font-size: 12px;
 }
 
-.text-button:hover {
+.button-quiet:hover {
   color: var(--red);
   border-color: var(--red);
 }
@@ -3013,7 +3032,7 @@ img {
     gap: 1rem;
   }
 
-  .intro-strip .text-link {
+  .intro-strip .link-action {
     grid-column: auto;
   }
 
@@ -3225,7 +3244,7 @@ img {
     gap: 0.5rem;
   }
 
-  .selection-tray__inner .text-link {
+  .selection-tray__inner .link-action {
     grid-column: 1;
   }
 
@@ -3530,4 +3549,22 @@ img {
   .detail-page__topline .cue-key {
     display: none;
   }
+}
+
+/* Tray thumb missing/broken state — mirrors artwork-image__missing in
+   miniature (needs-work 09-15 P3): a legal imageless save or a dead URL
+   must read as "no image", never as an empty loading slot. */
+.selection-tray__thumb-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--image-field);
+}
+
+.selection-tray__thumb-missing-mark {
+  color: var(--muted-foreground);
+  font-size: 0.625rem;
+  line-height: 1;
 }

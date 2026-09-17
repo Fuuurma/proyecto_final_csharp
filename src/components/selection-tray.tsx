@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
 import { ChevronDownIcon } from "@/components/icons";
-import { useSelection } from "@/lib/selection";
+import { useSelection, type SelectionItem } from "@/lib/selection";
 
 export function SelectionTray() {
   const { items, isHydrated } = useSelection();
@@ -32,18 +32,19 @@ export function SelectionTray() {
           {items.slice(0, 4).map((item) => (
             <span
               key={item.id}
-              className="selection-tray__thumb"
-              style={{ aspectRatio: item.imageAspectRatio }}
+              className="selection-tray__thumb aspect-(--tray-ratio)"
+              style={
+                {
+                  "--tray-ratio": item.imageAspectRatio,
+                } as import("react").CSSProperties
+              }
             >
-              {(() => {
-                const thumb = item.primaryImageSmall ?? item.primaryImage;
-                return thumb ? <img src={thumb} alt="" /> : null;
-              })()}
+              <TrayThumb item={item} />
             </span>
           ))}
         </div>
         <div className="selection-tray__actions">
-          <Link to="/selection" className="text-link">
+          <Link to="/selection" className="link-action">
             Open selection <span aria-hidden="true">→</span>
           </Link>
           <button
@@ -61,4 +62,26 @@ export function SelectionTray() {
       </div>
     </aside>
   );
+}
+
+/**
+ * One tray thumbnail with an honest missing/broken state (needs-work
+ * 09-15 P3): an imageless save (legal state) or a 404ing URL used to
+ * render as an empty slot that read as "loading". The placeholder
+ * mirrors artwork-image's "No image in the public record" language.
+ * The thumbs row is aria-hidden — the placeholder is visual only.
+ */
+function TrayThumb({ item }: { item: SelectionItem }) {
+  const [failed, setFailed] = useState(false);
+  const src = item.primaryImageSmall ?? item.primaryImage;
+  if (!src || failed) {
+    return (
+      <span className="selection-tray__thumb-missing" title="No image available">
+        <span className="selection-tray__thumb-missing-mark" aria-hidden="true">
+          ×
+        </span>
+      </span>
+    );
+  }
+  return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />;
 }
