@@ -32,7 +32,8 @@
       "!**/.agents",
       "!**/.claude",
       "!**/.cursor",
-      "!**/.opencode"
+      "!**/.opencode",
+      "!**/.repowise"
     ]
   }
 }
