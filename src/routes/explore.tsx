@@ -4,7 +4,7 @@ import {
   useNavigate,
   useSearch,
 } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { ArtworkCard } from "@/components/artwork-card";
 import { CloseIcon, SearchIcon } from "@/components/icons";
@@ -159,20 +159,26 @@ function Explore() {
     setFillFailed(false);
     setFillExhausted(false);
   }
-  const pathWorks =
-    activePath && !live
-      ? // Sort to the path's OWN order — the curated array's order is
-        // an implementation detail, not the path definition (devin
-        // 09-08 18:17 #1).
-        activePath.artworkIds
-          .map((id) => result.artworks.find((artwork) => artwork.id === id))
-          .filter((artwork): artwork is Artwork => Boolean(artwork))
-      : null;
+  const pathWorks = useMemo(
+    () =>
+      activePath && !live
+        ? // Sort to the path's OWN order — the curated array's order is
+          // an implementation detail, not the path definition (devin
+          // 09-08 18:17 #1).
+          activePath.artworkIds
+            .map((id) => result.artworks.find((artwork) => artwork.id === id))
+            .filter((artwork): artwork is Artwork => Boolean(artwork))
+        : null,
+    [activePath, live, result.artworks],
+  );
   // The path chrome only describes the grid when the path actually owns
   // it — with a query active the grid is live Met results, and labelling
   // them with the path title lied (devin 09-09 14:17 #3 / 14:57 #1).
   const shownPath = activePath && !live ? activePath : null;
-  const works = pathWorks ?? dedupeById([...result.artworks, ...extra]);
+  const works = useMemo(
+    () => pathWorks ?? dedupeById([...result.artworks, ...extra]),
+    [pathWorks, result.artworks, extra],
+  );
   const total = pathWorks ? pathWorks.length : result.total;
   const remaining = Math.max(0, total - works.length);
   // `result.total` for met-source searches counts upstream hits, not
@@ -203,7 +209,10 @@ function Explore() {
   // The displayed order is the sequence the detail route's Previous/Next
   // follows — persist it under the search identity so live-fetched works
   // get working neighbors too (devin 09-09 06:17 P1).
-  const seqIds = works.map((work) => work.id).join(",");
+  const seqIds = useMemo(
+    () => works.map((work) => work.id).join(","),
+    [works],
+  );
   const lastWrittenSeq = useRef("");
   useEffect(() => {
     const sig = `${searchKey}#${seqIds}`;
