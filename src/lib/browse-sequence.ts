@@ -19,7 +19,19 @@ function storage(): StorageLike | null {
 function isStoredArtwork(value: unknown): value is Artwork {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<Artwork>;
-  return typeof item.id === "number" && typeof item.displayTitle === "string";
+  // Sequence entries feed ArtworkImage + the prev/next cards, which read
+  // title, an image source and the aspect ratio — a truncated or
+  // tampered entry must drop here rather than render undefined fields
+  // (review 09-18 P1).
+  return (
+    typeof item.id === "number" &&
+    typeof item.displayTitle === "string" &&
+    (typeof item.primaryImage === "string" ||
+      typeof item.primaryImageSmall === "string") &&
+    typeof item.imageAspectRatio === "number" &&
+    Number.isFinite(item.imageAspectRatio) &&
+    item.imageAspectRatio > 0
+  );
 }
 
 /**

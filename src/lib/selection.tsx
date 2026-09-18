@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
 } from "react";
 import type { Artwork } from "./met/normalize";
@@ -107,13 +108,19 @@ function isSelectionItem(value: unknown): value is SelectionItem {
   const item = value as Partial<SelectionItem>;
   return (
     typeof item.id === "number" &&
-    isNullableString(item.displayTitle) &&
+    // displayTitle is non-nullable on Artwork — a null here is corrupted
+    // storage, not a legacy shape, and would render an untitleable card
+    // (review 09-18 P1: the versioned guard must match migrateLegacyItem).
+    typeof item.displayTitle === "string" &&
     isNullableString(item.artist) &&
     isNullableString(item.date) &&
     isNullableString(item.primaryImage) &&
     isNullableString(item.primaryImageSmall) &&
     typeof item.imageAspectRatio === "number" &&
-    Number.isFinite(item.imageAspectRatio)
+    Number.isFinite(item.imageAspectRatio) &&
+    // Zero/negative ratios render a collapsed card; legacy migration
+    // already falls back to 1, so the versioned guard requires > 0 too.
+    item.imageAspectRatio > 0
   );
 }
 
@@ -150,7 +157,9 @@ function migrateLegacyItem(value: unknown): SelectionItem | null {
   };
 }
 
-export function parseStoredSelection(raw: string | null): SelectionItem[] {
+export function parseStoredSelection(
+  raw: string | null,
+): SelectionItem[] | null {
   if (!raw) return [];
   let parsed: unknown;
   try {
@@ -168,11 +177,23 @@ export function parseStoredSelection(raw: string | null): SelectionItem[] {
     if (envelope.version === STORAGE_VERSION && Array.isArray(envelope.items)) {
       return envelope.items.filter(isSelectionItem);
     }
+    // A well-formed envelope whose version we don't speak was written by
+    // a different build. Returning [] would make the provider write back
+    // an empty v1 envelope and destroy the visitor's stored tray, so
+    // signal "foreign" instead — persistence degrades for the visit.
+    if (envelope.version !== undefined && Array.isArray(envelope.items)) {
+      return null;
+    }
   }
   return [];
 }
 
-export function readSelection(): SelectionItem[] {
+/**
+ * Returns the stored items, or null when storage holds an envelope from
+ * a different version — callers must not overwrite it (the provider
+ * skips its write-back for the visit, like private-mode degradation).
+ */
+export function readSelection(): SelectionItem[] | null {
   try {
     return parseStoredSelection(
       window.localStorage.getItem(SELECTION_STORAGE_KEY),
@@ -277,14 +298,20 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(selectionReducer, emptySelectionState);
   const { items, announcement } = state;
   const [isHydrated, setIsHydrated] = useState(false);
+  // A foreign-version envelope must survive the visit: the write-back
+  // effect stands down until storage speaks our version again (review
+  // 09-18 P2 — hydrate([]) + write used to destroy it).
+  const foreignStorage = useRef(false);
 
   useEffect(() => {
-    dispatch({ type: "hydrate", items: readSelection() });
+    const stored = readSelection();
+    foreignStorage.current = stored === null;
+    dispatch({ type: "hydrate", items: stored ?? [] });
     setIsHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || foreignStorage.current) return;
     writeSelection(items);
   }, [isHydrated, items]);
 

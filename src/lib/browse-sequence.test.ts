@@ -59,6 +59,17 @@ describe("browse sequence", () => {
     expect(readBrowseSequence("mixed").map((a) => a.id)).toEqual([1, 3]);
   });
 
+  it("drops entries that pass an id+title check but cannot render", () => {
+    // Review 09-18 P1: the guard verified only id + displayTitle, so a
+    // truncated entry reached ArtworkImage with undefined image/aspect.
+    const titleOnly = { id: 7, displayTitle: "Work 7" };
+    window.sessionStorage.setItem(
+      "mtm-seq:truncated",
+      JSON.stringify([makeArtwork(1), titleOnly, makeArtwork(3)]),
+    );
+    expect(readBrowseSequence("truncated").map((a) => a.id)).toEqual([1, 3]);
+  });
+
   it("resolves neighbors inside the browsed list", () => {
     const ids = [10, 20, 30, 40];
     writeBrowseSequence("search", ids.map(makeArtwork));
