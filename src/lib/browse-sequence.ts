@@ -5,14 +5,40 @@ const PREFIX = "mtm-seq:";
 // The Explore grid can never show more than SEARCH_PAGE_SIZE *
 // SEARCH_MAX_PAGE works, so the stored sequence is bounded the same way.
 const MAX_ITEMS = SEARCH_PAGE_SIZE * SEARCH_MAX_PAGE;
+// Distinct search identities accumulate one storage entry each (review
+// 09-18 P2: unbounded keys until quota, then silent degradation). The
+// index bounds them — newest write wins a slot, the oldest key is
+// evicted whole. Sessions rarely page more than a handful of searches.
+const MAX_KEYS = 8;
+const INDEX_KEY = `${PREFIX}_index`;
 
-type StorageLike = Pick<Storage, "getItem" | "setItem">;
+type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 function storage(): StorageLike | null {
   try {
     return typeof window === "undefined" ? null : window.sessionStorage;
   } catch {
     return null;
+  }
+}
+
+/** Ordered most-recent-first list of stored keys; corrupt index = empty. */
+function readIndex(store: StorageLike): string[] {
+  try {
+    const parsed: unknown = JSON.parse(store.getItem(INDEX_KEY) ?? "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((k): k is string => typeof k === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeIndex(store: StorageLike, keys: string[]): void {
+  try {
+    store.setItem(INDEX_KEY, JSON.stringify(keys));
+  } catch {
+    // Index write failure: the next storeSequence rebuilds it.
   }
 }
 
@@ -50,7 +76,21 @@ export function writeBrowseSequence(key: string, artworks: Artwork[]): void {
     store.setItem(PREFIX + key, JSON.stringify(artworks.slice(0, MAX_ITEMS)));
   } catch {
     // Quota or a disabled store: sequence nav degrades to the curated set.
+    return;
   }
+  // Bound the number of stored identities: upsert this key to the front
+  // and evict the oldest beyond MAX_KEYS, entry and all.
+  const keys = readIndex(store).filter((k) => k !== key);
+  keys.unshift(key);
+  const evicted = keys.splice(MAX_KEYS);
+  for (const old of evicted) {
+    try {
+      store.removeItem(PREFIX + old);
+    } catch {
+      // Entry already gone or store turned hostile — eviction is best-effort.
+    }
+  }
+  writeIndex(store, keys);
 }
 
 export function readBrowseSequence(key: string): Artwork[] {

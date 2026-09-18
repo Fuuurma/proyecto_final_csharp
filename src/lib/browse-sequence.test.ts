@@ -101,4 +101,41 @@ describe("browse sequence", () => {
       SEARCH_PAGE_SIZE * SEARCH_MAX_PAGE,
     );
   });
+
+  it("evicts the oldest search identity beyond MAX_KEYS=8", () => {
+    // Review 09-18 P2: every distinct searchKey accumulated its own
+    // storage entry until quota, then nav silently degraded. Writes are
+    // LRU-ranked: the 9th distinct key evicts the 1st, entry and all.
+    for (let i = 1; i <= 9; i++) {
+      writeBrowseSequence(`search-${i}`, [makeArtwork(i)]);
+    }
+    expect(readBrowseSequence("search-1")).toEqual([]);
+    expect(readBrowseSequence("search-2")).toHaveLength(1);
+    // Re-writing a key refreshes its recency instead of duplicating it.
+    writeBrowseSequence("search-2", [makeArtwork(20), makeArtwork(21)]);
+    for (let i = 10; i <= 15; i++) {
+      writeBrowseSequence(`search-${i}`, [makeArtwork(i)]);
+    }
+    // search-2 was refreshed after 3..9; the eviction frontier walks
+    // forward with each write — by search-15 the survivors are
+    // search-2 (refreshed), search-9, and search-10..15.
+    expect(readBrowseSequence("search-3")).toEqual([]);
+    expect(readBrowseSequence("search-7")).toEqual([]);
+    expect(readBrowseSequence("search-8")).toEqual([]);
+    expect(readBrowseSequence("search-9")).toHaveLength(1);
+    expect(readBrowseSequence("search-15")).toHaveLength(1);
+    expect(readBrowseSequence("search-2")).toHaveLength(2);
+  });
+
+  it("survives a corrupt index — storage keeps working", () => {
+    window.sessionStorage.setItem("mtm-seq:_index", "{not json");
+    writeBrowseSequence("fresh", [makeArtwork(1)]);
+    expect(readBrowseSequence("fresh")).toHaveLength(1);
+    // The rebuilt index evicts against a clean slate.
+    for (let i = 1; i <= 10; i++) {
+      writeBrowseSequence(`post-${i}`, [makeArtwork(i)]);
+    }
+    expect(readBrowseSequence("post-1")).toEqual([]);
+    expect(readBrowseSequence("post-8")).toHaveLength(1);
+  });
 });
