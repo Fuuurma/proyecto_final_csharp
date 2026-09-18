@@ -78,14 +78,16 @@ const missingDepartmentFilter = "__none__";
 
 async function isFixtureMode(): Promise<boolean> {
   // Non-`VITE_` prefix on purpose: Vite only ships `VITE_*` vars to the
-  // client bundle, so `MET_API_MODE` stays server-only.
+  // client bundle, so `MET_API_MODE` stays server-only. Server functions
+  // must read server env surfaces only — never `import.meta.env`, which
+  // Vite statically replaces and only resolves `VITE_*` names through
+  // (an unprefixed read here is always undefined dead code).
   // Environment surfaces, in order:
   //   1. process.env — Node contexts (vitest, scripts).
   //   2. cloudflare:workers getBindings — the workerd isolate under
   //      @cloudflare/vite-plugin; .dev.vars lands here, and shell env
   //      (playwright webServer) does NOT reach it (97b3e7a rename +
   //      plugin migration left fixture dead until 03:1x).
-  //   3. import.meta.env — prefixed-only fallback.
   if (process.env?.MET_API_MODE === "fixture") return true;
   try {
     const cf = (await import("cloudflare:workers")) as {
@@ -95,7 +97,7 @@ async function isFixtureMode(): Promise<boolean> {
   } catch {
     // Not running inside workerd (vitest/plain Node).
   }
-  return import.meta.env?.MET_API_MODE === "fixture";
+  return false;
 }
 
 function filterCuratedArtworks(query: string, department: string): Artwork[] {
