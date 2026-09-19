@@ -47,7 +47,9 @@ describe("ExploreGridFooter", () => {
     // Once fillExhausted fires, the exhaustion note owns the ending —
     // the raw-total-derived remaining must not also fire the cap
     // (devin 09-10 08:17 #2).
-    render(<ExploreGridFooter {...base} canLoadMore={false} fillExhausted />);
+    render(
+      <ExploreGridFooter {...base} canLoadMore={false} fillExhausted atCap />,
+    );
     expect(
       screen.getByText(/No further open-access works surfaced/),
     ).toBeInTheDocument();

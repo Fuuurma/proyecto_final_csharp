@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   adjacentInSequence,
   readBrowseSequence,
@@ -37,6 +37,7 @@ function makeArtwork(id: number): Artwork {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   window.sessionStorage.clear();
 });
 
@@ -126,6 +127,19 @@ describe("browse sequence", () => {
 
   it("reports a failed write so the caller can retry", () => {
     expect(writeBrowseSequence("ok", [makeArtwork(1)])).toBe(true);
+    // A quota-throwing setItem must surface as `false` — the explore
+    // effect only caches the write signature on success, so a later
+    // attempt retries and lands once storage frees up (review 09-19 P2).
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("quota", "QuotaExceededError");
+      });
+    expect(writeBrowseSequence("full", [makeArtwork(2)])).toBe(false);
+    expect(readBrowseSequence("full")).toEqual([]);
+    setItem.mockRestore();
+    expect(writeBrowseSequence("full", [makeArtwork(2)])).toBe(true);
+    expect(readBrowseSequence("full").map((a) => a.id)).toEqual([2]);
   });
 
   it("skips empty writes — no slot, no index, no eviction", () => {
@@ -167,6 +181,30 @@ describe("browse sequence", () => {
     window.sessionStorage.setItem("mtm-seq:_index", "{not json");
     expect(writeBrowseSequence("k", [makeArtwork(1)])).toBe(true);
     expect(readBrowseSequence("k").map((a) => a.id)).toEqual([1]);
+  });
+
+  it("sweeps orphaned entries a corrupt index forgot", () => {
+    // The corrupt-index rebuild resets the LRU to [newKey]; entries the
+    // old index listed stay on disk and leak toward quota unless the
+    // write sweeps them (review 09-19 P2).
+    window.sessionStorage.setItem("mtm-seq:_index", "{not json");
+    window.sessionStorage.setItem(
+      "mtm-seq:orphan",
+      JSON.stringify([makeArtwork(9)]),
+    );
+    window.sessionStorage.setItem(
+      "mtm-seq:orphan2",
+      JSON.stringify([makeArtwork(8)]),
+    );
+    expect(writeBrowseSequence("fresh", [makeArtwork(1)])).toBe(true);
+    expect(readBrowseSequence("fresh").map((a) => a.id)).toEqual([1]);
+    expect(window.sessionStorage.getItem("mtm-seq:orphan")).toBeNull();
+    expect(window.sessionStorage.getItem("mtm-seq:orphan2")).toBeNull();
+    // The rebuilt index and unrelated keys survive the sweep.
+    expect(window.sessionStorage.getItem("mtm-seq:_index")).not.toBeNull();
+    window.sessionStorage.setItem("unrelated", "keep me");
+    writeBrowseSequence("later", [makeArtwork(2)]);
+    expect(window.sessionStorage.getItem("unrelated")).toBe("keep me");
   });
 });
 

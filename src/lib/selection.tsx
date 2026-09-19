@@ -233,15 +233,26 @@ function localStorageOrNull(): SelectionStorage | null {
   }
 }
 
-export function readSelection(storage: SelectionStorage): SelectionItem[] {
+/**
+ * Guarded read that keeps the parse result — the mount effect needs the
+ * version status to flag a foreign envelope, which readSelection's
+ * items-only return would erase. getItem itself can throw (blocked
+ * cookies, SecurityError) even after the accessor succeeded, so the
+ * guard lives at this level and both callers share it (review 09-19 P1).
+ */
+function readStoredSelection(storage: SelectionStorage): ParsedStoredSelection {
   try {
-    const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
-    // A newer build's envelope hydrates nothing here but stays on disk
-    // for the version that can read it.
-    return stored.status === "ok" ? stored.items : [];
+    return parseStoredSelection(storage.getItem(STORAGE_KEY));
   } catch {
-    return [];
+    return { status: "ok", items: [] };
   }
+}
+
+export function readSelection(storage: SelectionStorage): SelectionItem[] {
+  const stored = readStoredSelection(storage);
+  // A newer build's envelope hydrates nothing here but stays on disk
+  // for the version that can read it.
+  return stored.status === "ok" ? stored.items : [];
 }
 
 export type PersistSelectionResult =
@@ -393,7 +404,9 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
     }
     // Detect a foreign envelope at mount, not just at first write — the
     // notice must show before the user's first save (review 09-19 P1).
-    const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
+    // The read goes through readStoredSelection so a throwing getItem
+    // hydrates empty instead of crashing the mount effect.
+    const stored = readStoredSelection(storage);
     if (stored.status === "unsupported-version") {
       setPersistenceBlocked(true);
     }

@@ -28,7 +28,10 @@ export type SequenceEntry = Pick<
   | "imageAspectRatio"
 >;
 
-type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+type StorageLike = Pick<
+  Storage,
+  "getItem" | "setItem" | "removeItem" | "key" | "length"
+>;
 
 function storage(): StorageLike | null {
   try {
@@ -55,6 +58,34 @@ function writeIndex(store: StorageLike, keys: string[]): void {
     store.setItem(INDEX_KEY, JSON.stringify(keys));
   } catch {
     // Index write failure: the next writeBrowseSequence rebuilds it.
+  }
+}
+
+/**
+ * Remove every `PREFIX*` entry the rebuilt index does not claim. A corrupt
+ * or truncated index self-heals to just the surviving keys, but the
+ * entries it forgot stay on disk and still count toward the quota the LRU
+ * exists to protect — same for an entry orphaned by a failed index write
+ * (review 09-19 P2). Iterates backwards so removeItem cannot shift keys
+ * past the cursor. INDEX_KEY itself is never swept.
+ */
+function sweepOrphanedEntries(
+  store: StorageLike,
+  keep: ReadonlySet<string>,
+): void {
+  try {
+    for (let i = store.length - 1; i >= 0; i -= 1) {
+      const storedKey = store.key(i);
+      if (
+        storedKey?.startsWith(PREFIX) &&
+        storedKey !== INDEX_KEY &&
+        !keep.has(storedKey.slice(PREFIX.length))
+      ) {
+        store.removeItem(storedKey);
+      }
+    }
+  } catch {
+    // Enumeration or removal on a hostile store — best-effort hygiene.
   }
 }
 
@@ -144,6 +175,9 @@ export function writeBrowseSequence(key: string, artworks: Artwork[]): boolean {
       // Entry already gone or store turned hostile — eviction is best-effort.
     }
   }
+  // Entries the index forgot (corrupt/oversize index, a failed index
+  // write) are invisible to the LRU but still burn quota — sweep them.
+  sweepOrphanedEntries(store, new Set(keys));
   writeIndex(store, keys);
   return true;
 }

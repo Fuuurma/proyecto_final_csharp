@@ -10,7 +10,16 @@ export function SelectionTray() {
   });
   const [collapsed, setCollapsed] = useState(false);
 
-  if (!isHydrated || items.length === 0 || pathname === "/selection") {
+  if (!isHydrated) return null;
+  // A blocked tray must still render: a foreign envelope hydrates to
+  // items=[], so the empty-tray gate would hide the warning until the
+  // first (already-doomed) save — defeating the disclosure (review
+  // 09-19 P1). The /selection gate also yields: removes on that page
+  // are writes that are equally not landing.
+  if (
+    !persistenceBlocked &&
+    (items.length === 0 || pathname === "/selection")
+  ) {
     return null;
   }
 
@@ -29,8 +38,8 @@ export function SelectionTray() {
           </strong>
           {persistenceBlocked ? (
             <p className="selection-tray__warning">
-              Changes aren't being saved — this page is an older build. Refresh
-              to update.
+              A newer saved version owns this key — your changes aren't being
+              saved here.
             </p>
           ) : null}
         </div>
@@ -50,9 +59,11 @@ export function SelectionTray() {
           ))}
         </div>
         <div className="selection-tray__actions">
-          <Link to="/selection" className="link-action">
-            Open selection <span aria-hidden="true">→</span>
-          </Link>
+          {pathname !== "/selection" ? (
+            <Link to="/selection" className="link-action">
+              Open selection <span aria-hidden="true">→</span>
+            </Link>
+          ) : null}
           <button
             type="button"
             className="selection-tray__toggle"

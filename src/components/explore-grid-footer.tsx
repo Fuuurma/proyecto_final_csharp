@@ -63,7 +63,11 @@ export function ExploreGridFooter({
           the search to look further.
         </p>
       ) : null}
-      {atCap ? (
+      {/* loadMoreState already keeps atCap and fillExhausted mutually
+          exclusive, but the component enforces it too — an exhausted
+          stream owns the ending even if a caller passes both (review
+          09-19 P2). */}
+      {atCap && !fillExhausted ? (
         <p className="explore-cap">
           This view stops at {SEARCH_PAGE_SIZE * SEARCH_MAX_PAGE} records.
           Narrow the search to look further.

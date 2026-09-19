@@ -122,7 +122,14 @@ function ArtworkDetail() {
   );
 
   const adjacent = artwork
-    ? (sequence ?? getAdjacentArtworks(artwork))
+    ? // A `?seq=` deep link's first paint cannot resolve the stored
+      // sequence yet — rendering the curated fallback there flashes
+      // neighbors that are not the visitor's trail, then swaps at mount
+      // (review 09-19 P2). Hold the nav empty until isClient; a seq-less
+      // visit uses the curated set immediately and it never swaps.
+      seq && !isClient
+      ? { previous: null, next: null, position: 0, total: 0 }
+      : (sequence ?? getAdjacentArtworks(artwork))
     : { previous: null, next: null, position: 0, total: 0 };
 
   useEffect(() => {
@@ -147,7 +154,10 @@ function ArtworkDetail() {
           from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.previous.id) },
-          search: { seq },
+          // Conditional like ArtworkCard's — an unconditional
+          // `seq: undefined` risks serializing an empty param (review
+          // 09-19 P3).
+          search: seq ? { seq } : {},
         });
       } else if (event.key === "ArrowRight" && adjacent.next) {
         event.preventDefault();
@@ -155,7 +165,7 @@ function ArtworkDetail() {
           from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.next.id) },
-          search: { seq },
+          search: seq ? { seq } : {},
         });
       }
     }
@@ -353,7 +363,7 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.previous.id) }}
-              search={{ seq }}
+              search={seq ? { seq } : {}}
               className="detail-sequence__link"
             >
               <ArtworkImage artwork={adjacent.previous} />
@@ -372,7 +382,7 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.next.id) }}
-              search={{ seq }}
+              search={seq ? { seq } : {}}
               className="detail-sequence__link detail-sequence__link--next"
             >
               <ArtworkImage artwork={adjacent.next} />
