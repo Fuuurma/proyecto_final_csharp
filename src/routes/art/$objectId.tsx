@@ -99,6 +99,14 @@ export const Route = createFileRoute("/art/$objectId")({
   component: ArtworkDetail,
 });
 
+/** The honest no-trail state: no neighbors, no position to claim. */
+const EMPTY_ADJACENT = {
+  previous: null,
+  next: null,
+  position: 0,
+  total: 0,
+};
+
 function ArtworkDetail() {
   const result = Route.useLoaderData();
   const { objectId } = Route.useParams();
@@ -122,15 +130,18 @@ function ArtworkDetail() {
   );
 
   const adjacent = artwork
-    ? // A `?seq=` deep link's first paint cannot resolve the stored
-      // sequence yet — rendering the curated fallback there flashes
-      // neighbors that are not the visitor's trail, then swaps at mount
-      // (review 09-19 P2). Hold the nav empty until isClient; a seq-less
-      // visit uses the curated set immediately and it never swaps.
-      seq && !isClient
-      ? { previous: null, next: null, position: 0, total: 0 }
-      : (sequence ?? getAdjacentArtworks(artwork))
-    : { previous: null, next: null, position: 0, total: 0 };
+    ? seq
+      ? // A `?seq=` link claims a browsed trail. Before isClient the
+        // store is unreadable, so the nav holds empty — no curated
+        // flash on first paint (review 09-19 P2). And when the lookup
+        // resolves to nothing — evicted, expired with the tab, or
+        // displaced by a colliding identity whose sig no longer
+        // matches — the curated set must not pose as that trail with a
+        // confident `N / 45`; the honest render is the empty nav
+        // (review 09-19 18:17 P2).
+        (sequence ?? EMPTY_ADJACENT)
+      : getAdjacentArtworks(artwork)
+    : EMPTY_ADJACENT;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {

@@ -108,12 +108,12 @@ function isStoredEntry(value: unknown): value is SequenceEntry {
 }
 
 /**
- * Opaque token for the `?seq=` param. The raw search identity used to
- * ride inside every detail URL (`?seq=van+Gogh%7Call%7C%7C%7Clive`) —
- * unshareable, leaking the query into history, and unbounded in length
- * for both the URL and the storage key (review 09-19 P2). djb2 → base36
- * is short, deterministic, and needs no async crypto; a collision only
- * degrades that identity to the curated neighbors.
+ * Opaque token for the `?seq=` param — the storage-key half. The raw
+ * search identity used to ride inside every detail URL
+ * (`?seq=van+Gogh%7Call%7C%7C%7Clive`) — unshareable, leaking the query
+ * into history, and unbounded in length for both the URL and the
+ * storage key (review 09-19 P2). djb2 → base36 is short, deterministic,
+ * and needs no async crypto.
  */
 export function sequenceToken(identity: string): string {
   let hash = 5381;
@@ -122,6 +122,45 @@ export function sequenceToken(identity: string): string {
   }
   return hash.toString(36);
 }
+
+/**
+ * Ownership signature — the second half of the `?seq=` param, stored
+ * inside the entry and checked on read. A 32-bit key can collide
+ * across a session's distinct searches, and a colliding identity's
+ * write legitimately wins the shared slot; without the signature the
+ * displaced identity's links would read the foreign list and render a
+ * confident wrong trail (review 09-19 18:17 P2). fnv-1a is independent
+ * of djb2, so a key collision alone cannot alias — only a simultaneous
+ * djb2+fnv collision (~2^-64) could, which is documented here rather
+ * than claimed impossible.
+ */
+export function sequenceSignature(identity: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < identity.length; index += 1) {
+    hash ^= identity.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+/**
+ * The `?seq=` value: `<key>.<sig>`. The key selects the storage slot;
+ * the sig must match the entry's stored signature or the read returns
+ * nothing — an evicted, absent, or collision-displaced sequence all
+ * surface identically as "no trail" instead of a confident wrong one.
+ */
+export function sequenceParam(identity: string): string {
+  return `${sequenceToken(identity)}.${sequenceSignature(identity)}`;
+}
+
+function parseSeqParam(param: string): { key: string; sig: string } | null {
+  const dot = param.indexOf(".");
+  if (dot <= 0 || dot === param.length - 1) return null;
+  return { key: param.slice(0, dot), sig: param.slice(dot + 1) };
+}
+
+/** Stored payload: the owning identity's signature plus the list. */
+type StoredSequence = { sig: string; items: SequenceEntry[] };
 
 /**
  * The Explore grid is the sequence a visitor is actually browsing, but
@@ -137,28 +176,34 @@ export function sequenceToken(identity: string): string {
  * quota-failed write as done, or the retry that could succeed once
  * storage frees up never happens (review 09-19 P3).
  */
-export function writeBrowseSequence(key: string, artworks: Artwork[]): boolean {
+export function writeBrowseSequence(
+  param: string,
+  artworks: Artwork[],
+): boolean {
   const store = storage();
+  const parsed = parseSeqParam(param);
   // An empty result under a real identity would index a slot holding no
   // browsed order — and evict a real sequence for nothing (sibling
-  // review 09-19). Nothing to persist, nothing to index.
-  if (!store || artworks.length === 0) return false;
+  // review 09-19). A malformed param (no signature half) cannot be
+  // read back either, so it is refused up front. Nothing to persist,
+  // nothing to index.
+  if (!store || !parsed || artworks.length === 0) return false;
+  const { key, sig } = parsed;
   try {
-    store.setItem(
-      PREFIX + key,
-      JSON.stringify(
-        artworks.slice(0, MAX_ITEMS).map(
-          (artwork): SequenceEntry => ({
-            id: artwork.id,
-            displayTitle: artwork.displayTitle,
-            artist: artwork.artist,
-            primaryImage: artwork.primaryImage,
-            primaryImageSmall: artwork.primaryImageSmall,
-            imageAspectRatio: artwork.imageAspectRatio,
-          }),
-        ),
+    const payload: StoredSequence = {
+      sig,
+      items: artworks.slice(0, MAX_ITEMS).map(
+        (artwork): SequenceEntry => ({
+          id: artwork.id,
+          displayTitle: artwork.displayTitle,
+          artist: artwork.artist,
+          primaryImage: artwork.primaryImage,
+          primaryImageSmall: artwork.primaryImageSmall,
+          imageAspectRatio: artwork.imageAspectRatio,
+        }),
       ),
-    );
+    };
+    store.setItem(PREFIX + key, JSON.stringify(payload));
   } catch {
     // Quota or a disabled store: sequence nav degrades to the curated set.
     return false;
@@ -182,14 +227,23 @@ export function writeBrowseSequence(key: string, artworks: Artwork[]): boolean {
   return true;
 }
 
-export function readBrowseSequence(key: string): SequenceEntry[] {
+export function readBrowseSequence(param: string): SequenceEntry[] {
   const store = storage();
-  if (!store) return [];
+  const parsed = parseSeqParam(param);
+  if (!store || !parsed) return [];
   try {
-    const raw = store.getItem(PREFIX + key);
+    const raw = store.getItem(PREFIX + parsed.key);
     if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isStoredEntry) : [];
+    const payload: unknown = JSON.parse(raw);
+    if (!payload || typeof payload !== "object") return [];
+    const envelope = payload as Partial<StoredSequence>;
+    // A colliding identity legitimately wins the shared key on write —
+    // its signature then owns the slot, and this identity's links must
+    // read nothing rather than the foreign list (review 09-19 18:17 P2).
+    if (envelope.sig !== parsed.sig) return [];
+    return Array.isArray(envelope.items)
+      ? envelope.items.filter(isStoredEntry)
+      : [];
   } catch {
     return [];
   }
@@ -203,10 +257,10 @@ export type SequenceNeighbors = {
 };
 
 export function adjacentInSequence(
-  key: string,
+  param: string,
   artworkId: number,
 ): SequenceNeighbors | null {
-  const sequence = readBrowseSequence(key);
+  const sequence = readBrowseSequence(param);
   const index = sequence.findIndex((item) => item.id === artworkId);
   if (index < 0) return null;
   return {

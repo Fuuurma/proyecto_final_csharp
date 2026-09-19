@@ -30,7 +30,7 @@ import {
   exploreDepartmentSchema,
   isExploreDepartmentFilter,
 } from "@/data/departments";
-import { sequenceToken, writeBrowseSequence } from "@/lib/browse-sequence";
+import { sequenceParam, writeBrowseSequence } from "@/lib/browse-sequence";
 import { exploreCountText, loadMoreState } from "@/lib/explore-load";
 import { collectPages, dedupeById, type PageCache } from "@/lib/fill-pages";
 import type { Artwork } from "@/lib/met/normalize";
@@ -196,7 +196,10 @@ function Explore() {
   // follows — persisted under an opaque token so live-fetched works get
   // working neighbors too (devin 09-09 06:17 P1). The raw identity used
   // to ride inside every detail URL and storage key (review 09-19 P2).
-  const seqToken = sequenceToken(searchKey);
+  // The param is `<key>.<sig>`: the sig lets the detail route detect a
+  // collision-displaced entry instead of rendering the wrong trail
+  // (review 09-19 18:17 P2).
+  const seqParam = sequenceParam(searchKey);
   const seqIds = works.map((work) => work.id).join(",");
   const lastWrittenSeq = useRef("");
   const worksRef = useRef(works);
@@ -204,17 +207,17 @@ function Explore() {
     worksRef.current = works;
   });
   useEffect(() => {
-    const sig = `${seqToken}#${seqIds}`;
-    if (lastWrittenSeq.current === sig) return;
+    const writeTag = `${seqParam}#${seqIds}`;
+    if (lastWrittenSeq.current === writeTag) return;
     // Mark only a landed write — a quota-failed one must retry on the
     // next identity change instead of being swallowed by the sig cache
     // (review 09-19 P3). `works` comes through a ref: `seqIds` already
     // captures the identity, and the fresh-array dep re-ran this
     // needlessly every render.
-    if (writeBrowseSequence(seqToken, worksRef.current)) {
-      lastWrittenSeq.current = sig;
+    if (writeBrowseSequence(seqParam, worksRef.current)) {
+      lastWrittenSeq.current = writeTag;
     }
-  }, [seqToken, seqIds]);
+  }, [seqParam, seqIds]);
 
   useEffect(() => setIsClient(true), []);
 
@@ -556,7 +559,7 @@ function Explore() {
         <>
           <section className="artwork-grid" aria-label="Collection results">
             {works.map((artwork) => (
-              <ArtworkCard key={artwork.id} artwork={artwork} seq={seqToken} />
+              <ArtworkCard key={artwork.id} artwork={artwork} seq={seqParam} />
             ))}
           </section>
           <ExploreGridFooter

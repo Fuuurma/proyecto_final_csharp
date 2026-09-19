@@ -33,12 +33,15 @@ type SelectionContextValue = {
   isHydrated: boolean;
   announcement: string;
   /**
-   * True while a newer build's envelope owns the storage key: writes are
-   * refused so the foreign payload survives, which means the user's
-   * in-session changes are NOT being persisted (review 09-19 P1). The UI
-   * must disclose this instead of letting saves die silently.
+   * Why a save cannot persist, or null when writes land normally.
+   * "unsupported-version": a newer build's envelope owns the storage
+   * key — writes are refused so the foreign payload survives.
+   * "unavailable": the store itself refuses (private mode, quota, a
+   * throwing accessor) — saves die the same silent death, so it must
+   * be disclosed distinctly, not coerced to unblocked (review 09-19
+   * P1; review 09-19 18:17 P2).
    */
-  persistenceBlocked: boolean;
+  persistenceBlocked: "unsupported-version" | "unavailable" | null;
   has: (objectId: number) => boolean;
   toggle: (artwork: Artwork) => void;
   remove: (objectId: number) => void;
@@ -393,11 +396,16 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(selectionReducer, emptySelectionState);
   const { items, announcement } = state;
   const [isHydrated, setIsHydrated] = useState(false);
-  const [persistenceBlocked, setPersistenceBlocked] = useState(false);
+  const [persistenceBlocked, setPersistenceBlocked] =
+    useState<SelectionContextValue["persistenceBlocked"]>(null);
 
   useEffect(() => {
     const storage = localStorageOrNull();
     if (!storage) {
+      // The accessor itself is blocked — every save is a no-op from the
+      // first render, so the unavailable state must be disclosed at
+      // mount, not after the first doomed write (review 09-19 18:17 P2).
+      setPersistenceBlocked("unavailable");
       dispatch({ type: "hydrate", items: [] });
       setIsHydrated(true);
       return;
@@ -408,7 +416,7 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
     // hydrates empty instead of crashing the mount effect.
     const stored = readStoredSelection(storage);
     if (stored.status === "unsupported-version") {
-      setPersistenceBlocked(true);
+      setPersistenceBlocked("unsupported-version");
     }
     dispatch({
       type: "hydrate",
@@ -420,12 +428,16 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isHydrated) return;
     const storage = localStorageOrNull();
-    if (storage) {
-      const result = persistSelection(storage, items);
-      setPersistenceBlocked(
-        result.status === "blocked" && result.reason === "unsupported-version",
-      );
+    if (!storage) {
+      setPersistenceBlocked("unavailable");
+      return;
     }
+    const result = persistSelection(storage, items);
+    // Surface the refusal reason as-is — a quota/private-mode failure
+    // ("unavailable") is the same silent-save class as a foreign
+    // envelope and must not map back to unblocked (review 09-19
+    // 18:17 P2).
+    setPersistenceBlocked(result.status === "blocked" ? result.reason : null);
   }, [isHydrated, items]);
 
   const has = useCallback(

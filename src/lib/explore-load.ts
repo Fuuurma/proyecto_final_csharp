@@ -1,4 +1,5 @@
 import { SEARCH_MAX_PAGE, SEARCH_PAGE_SIZE } from "./met/search-query";
+import type { CollectionSearchResult } from "./met/server-functions";
 
 export type ExploreResultSource = "curated" | "fixture" | "met";
 
@@ -48,7 +49,10 @@ export type ExploreLoadState = {
  */
 export function loadMoreState(input: {
   source: ExploreResultSource;
-  status: string;
+  // The real result union, not `string`: a loose type let any future
+  // or mistyped status count as loadable — only a non-"error" search
+  // result may offer more pages (review 09-19 18:17 P3).
+  status: CollectionSearchResult["status"];
   live: boolean;
   hasPath: boolean;
   fillExhausted: boolean;

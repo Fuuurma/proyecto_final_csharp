@@ -38,8 +38,12 @@ export function SelectionTray() {
           </strong>
           {persistenceBlocked ? (
             <p className="selection-tray__warning">
-              A newer saved version owns this key — your changes aren't being
-              saved here.
+              {persistenceBlocked === "unsupported-version"
+                ? "A newer saved version owns this key — your changes aren't being saved here."
+                : // "unavailable": private mode, quota, or a refused
+                  // accessor — distinct copy, not the foreign-envelope
+                  // explanation (review 09-19 18:17 P2).
+                  "This browser is blocking local storage — changes to your selection won't be saved for a later visit."}
             </p>
           ) : null}
         </div>

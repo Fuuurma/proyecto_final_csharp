@@ -54,7 +54,7 @@ describe("exploreCountText", () => {
 describe("loadMoreState", () => {
   const base = {
     source: "met" as const,
-    status: "success",
+    status: "success" as const,
     live: true,
     hasPath: false,
     fillExhausted: false,
