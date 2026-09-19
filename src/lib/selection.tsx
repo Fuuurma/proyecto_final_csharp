@@ -32,6 +32,13 @@ type SelectionContextValue = {
   items: SelectionItem[];
   isHydrated: boolean;
   announcement: string;
+  /**
+   * True while a newer build's envelope owns the storage key: writes are
+   * refused so the foreign payload survives, which means the user's
+   * in-session changes are NOT being persisted (review 09-19 P1). The UI
+   * must disclose this instead of letting saves die silently.
+   */
+  persistenceBlocked: boolean;
   has: (objectId: number) => boolean;
   toggle: (artwork: Artwork) => void;
   remove: (objectId: number) => void;
@@ -237,24 +244,32 @@ export function readSelection(storage: SelectionStorage): SelectionItem[] {
   }
 }
 
+export type PersistSelectionResult =
+  | { status: "persisted" }
+  | { status: "blocked"; reason: "unsupported-version"; version: number }
+  | { status: "blocked"; reason: "unavailable" };
+
 export function persistSelection(
   storage: SelectionStorage,
   items: SelectionItem[],
-): void {
+): PersistSelectionResult {
   try {
     // Never re-stamp over an unsupported-version payload: this build
     // cannot represent it, and overwriting would destroy data a future
     // migration could still recover (review 09-14 P1). The refusal must
     // not be silent — saves and clears no-op while the newer payload is
-    // preserved (review 09-14 P3).
-    // TODO: surface a "selection changes are not being saved" notice in
-    // the tray while an unsupported-version payload owns the key.
+    // preserved (review 09-14 P3), so callers get an explicit "blocked"
+    // result and the tray discloses it (review 09-19 P1).
     const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
     if (stored.status === "unsupported-version") {
       console.warn(
         `[selection] stored payload has version ${stored.version}, which this build cannot read; keeping it on disk and skipping this write`,
       );
-      return;
+      return {
+        status: "blocked",
+        reason: "unsupported-version",
+        version: stored.version,
+      };
     }
     // An empty selection on a key-less storage stays key-less: writing
     // here would stamp {"items":[]} for every first-time visitor and
@@ -262,16 +277,18 @@ export function persistSelection(
     // 09-15 06:16 P3). Pre-existing keys still update (clearing the
     // last item must persist).
     if (items.length === 0 && storage.getItem(STORAGE_KEY) === null) {
-      return;
+      return { status: "persisted" };
     }
     storage.setItem(
       STORAGE_KEY,
       JSON.stringify({ version: SELECTION_VERSION, items }),
     );
+    return { status: "persisted" };
   } catch {
     // Private mode / quota-exceeded: the in-memory tray keeps working,
     // persistence just degrades for this visit. Mirrors readSelection's
     // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
+    return { status: "blocked", reason: "unavailable" };
   }
 }
 
@@ -365,12 +382,24 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(selectionReducer, emptySelectionState);
   const { items, announcement } = state;
   const [isHydrated, setIsHydrated] = useState(false);
+  const [persistenceBlocked, setPersistenceBlocked] = useState(false);
 
   useEffect(() => {
     const storage = localStorageOrNull();
+    if (!storage) {
+      dispatch({ type: "hydrate", items: [] });
+      setIsHydrated(true);
+      return;
+    }
+    // Detect a foreign envelope at mount, not just at first write — the
+    // notice must show before the user's first save (review 09-19 P1).
+    const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
+    if (stored.status === "unsupported-version") {
+      setPersistenceBlocked(true);
+    }
     dispatch({
       type: "hydrate",
-      items: storage ? readSelection(storage) : [],
+      items: stored.status === "ok" ? stored.items : [],
     });
     setIsHydrated(true);
   }, []);
@@ -378,7 +407,12 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isHydrated) return;
     const storage = localStorageOrNull();
-    if (storage) persistSelection(storage, items);
+    if (storage) {
+      const result = persistSelection(storage, items);
+      setPersistenceBlocked(
+        result.status === "blocked" && result.reason === "unsupported-version",
+      );
+    }
   }, [isHydrated, items]);
 
   const has = useCallback(
@@ -407,13 +441,24 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
       items,
       isHydrated,
       announcement,
+      persistenceBlocked,
       has,
       toggle,
       remove,
       move,
       clear,
     }),
-    [announcement, clear, has, isHydrated, items, move, remove, toggle],
+    [
+      announcement,
+      clear,
+      has,
+      isHydrated,
+      items,
+      move,
+      persistenceBlocked,
+      remove,
+      toggle,
+    ],
   );
 
   return (

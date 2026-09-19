@@ -4,7 +4,7 @@ import { ChevronDownIcon } from "@/components/icons";
 import { type SelectionItem, useSelection } from "@/lib/selection";
 
 export function SelectionTray() {
-  const { items, isHydrated } = useSelection();
+  const { items, isHydrated, persistenceBlocked } = useSelection();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -27,6 +27,12 @@ export function SelectionTray() {
           <strong>
             {items.length} {items.length === 1 ? "work" : "works"} saved
           </strong>
+          {persistenceBlocked ? (
+            <p className="selection-tray__warning">
+              Changes aren't being saved — this page is an older build. Refresh
+              to update.
+            </p>
+          ) : null}
         </div>
         <div className="selection-tray__thumbs" aria-hidden="true">
           {items.slice(0, 4).map((item) => (

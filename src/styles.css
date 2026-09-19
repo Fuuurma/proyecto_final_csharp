@@ -2395,6 +2395,17 @@ body:has(.selection-tray.is-collapsed) {
   letter-spacing: -0.035em;
 }
 
+/* Persistence-blocked notice (review 09-19 P1): a foreign-version envelope
+   owns the key, so in-session saves are not landing on disk — the tray
+   discloses it rather than letting the count look "saved". */
+.selection-tray__warning {
+  margin: 0.15rem 0 0;
+  max-width: 16rem;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--destructive);
+}
+
 .selection-tray__thumbs {
   display: flex;
   align-items: center;

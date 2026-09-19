@@ -282,6 +282,22 @@ describe("selection storage read/write", () => {
     warn.mockRestore();
   });
 
+  it("reports blocked/unsupported-version so the UI can disclose unsaved changes", () => {
+    const foreign = JSON.stringify({ version: 2, items: [item] });
+    const storage = createStorageStub(foreign);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(persistSelection(storage, [item])).toEqual({
+      status: "blocked",
+      reason: "unsupported-version",
+      version: 2,
+    });
+    expect(persistSelection(createStorageStub(), [item])).toEqual({
+      status: "persisted",
+    });
+    vi.restoreAllMocks();
+  });
+
   it("re-stamps over a corrupt payload, which holds nothing recoverable", () => {
     const storage = createStorageStub("{not json");
     persistSelection(storage, [item]);
