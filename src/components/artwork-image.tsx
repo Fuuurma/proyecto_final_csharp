@@ -3,7 +3,18 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { Artwork } from "@/lib/met/normalize";
 
 type ArtworkImageProps = {
-  artwork: Artwork;
+  // The whole Artwork is not required — only the fields this component
+  // reads — so stored browse-sequence entries (a slim pick, review
+  // 09-19 P3) render without a fake full record.
+  artwork: Pick<
+    Artwork,
+    | "id"
+    | "displayTitle"
+    | "artist"
+    | "primaryImage"
+    | "primaryImageSmall"
+    | "imageAspectRatio"
+  >;
   size?: "small" | "large";
   layout?: "ratio" | "fill";
   eager?: boolean;

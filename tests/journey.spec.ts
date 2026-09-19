@@ -79,6 +79,43 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
   await expect(page.getByRole("alertdialog")).toBeHidden();
 });
 
+test("Detail Previous/Next follow the browsed Explore order", async ({
+  page,
+}) => {
+  // Fixture mode filters the committed set in curated order, so
+  // "van Gogh" lays out a known sequence: Wheat Field, Sunflowers,
+  // Irises, Roses, La Berceuse, Women Picking Olives, Bouquet.
+  await page.goto("/explore?q=van+Gogh");
+  const cards = page.locator(".artwork-card");
+  await expect(cards).toHaveCount(7);
+
+  await cards
+    .nth(1)
+    .getByRole("heading")
+    .getByRole("link", { name: "Sunflowers", exact: true })
+    .click();
+  // The link carries an opaque sequence token — never the raw search
+  // identity (review 09-19 P2).
+  await expect(page).toHaveURL(/\/art\/436524\?seq=[a-z0-9]+$/);
+
+  // Position resolves inside the browsed list, not the 45-work curated
+  // set the deep-link fallback would count.
+  await expect(page.locator(".detail-page__position")).toHaveText(/02 \/ 07/);
+  const sequence = page.locator(".detail-sequence");
+  await expect(
+    sequence.getByRole("link", { name: /Wheat Field with Cypresses/ }),
+  ).toHaveAttribute("href", /\/art\/436535\?seq=[a-z0-9]+/);
+  await expect(sequence.getByRole("link", { name: /Irises/ })).toHaveAttribute(
+    "href",
+    /\/art\/436528\?seq=[a-z0-9]+/,
+  );
+
+  // Arrow-key paging keeps walking the same sequence.
+  await page.keyboard.press("ArrowRight");
+  await expect(page).toHaveURL(/\/art\/436528\?seq=[a-z0-9]+$/);
+  await expect(page.locator(".detail-page__position")).toHaveText(/03 \/ 07/);
+});
+
 test("Explore explains an empty search", async ({ page }) => {
   await page.goto("/explore?q=not-a-real-object");
 

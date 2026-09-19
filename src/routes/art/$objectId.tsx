@@ -4,7 +4,7 @@ import {
   notFound,
   useNavigate,
 } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
 import {
@@ -107,14 +107,19 @@ function ArtworkDetail() {
 
   const artwork = result?.status === "success" ? result.artwork : null;
 
-  // The browsed sequence is client-only (sessionStorage), so it resolves
-  // after mount — curated neighbors stay the first-paint/deep-link
-  // fallback, and the visited list wins once it proves to contain the
-  // work (devin 09-09 06:17 P1).
-  const [sequence, setSequence] = useState<SequenceNeighbors | null>(null);
-  useEffect(() => {
-    setSequence(seq && artwork ? adjacentInSequence(seq, artwork.id) : null);
-  }, [seq, artwork]);
+  // The browsed sequence is client-only (sessionStorage). SSR and the
+  // hydration pass must render the curated fallback or hydration
+  // diverges — so the isClient gate holds until mount, then neighbors
+  // resolve synchronously during render. Client-side prev/next therefore
+  // never paints one frame of the previous object's neighbors before the
+  // effect could catch up (devin 09-09 06:17 P1; review 09-19 P2).
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => setIsClient(true), []);
+  const sequence = useMemo<SequenceNeighbors | null>(
+    () =>
+      isClient && seq && artwork ? adjacentInSequence(seq, artwork.id) : null,
+    [isClient, seq, artwork],
+  );
 
   const adjacent = artwork
     ? (sequence ?? getAdjacentArtworks(artwork))

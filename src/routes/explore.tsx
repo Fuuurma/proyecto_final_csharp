@@ -7,6 +7,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { ArtworkCard } from "@/components/artwork-card";
+import { ExploreGridFooter } from "@/components/explore-grid-footer";
 import { CloseIcon, SearchIcon } from "@/components/icons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -29,13 +30,13 @@ import {
   exploreDepartmentSchema,
   isExploreDepartmentFilter,
 } from "@/data/departments";
-import { writeBrowseSequence } from "@/lib/browse-sequence";
+import { sequenceToken, writeBrowseSequence } from "@/lib/browse-sequence";
+import { exploreCountText, loadMoreState } from "@/lib/explore-load";
 import { collectPages, dedupeById, type PageCache } from "@/lib/fill-pages";
 import type { Artwork } from "@/lib/met/normalize";
 import {
   isLiveCollectionSearch,
   SEARCH_MAX_PAGE,
-  SEARCH_PAGE_SIZE,
 } from "@/lib/met/search-query";
 import { searchCollection } from "@/lib/met/server-functions";
 import { cn } from "@/lib/utils";
@@ -177,42 +178,43 @@ function Explore() {
   const works = pathWorks ?? dedupeById([...result.artworks, ...extra]);
   const total = pathWorks ? pathWorks.length : result.total;
   const remaining = Math.max(0, total - works.length);
-  // `result.total` for met-source searches counts upstream hits, not
-  // displayable rows — the open-access sieve drops an unknowable share —
-  // so the button must not promise a count it can't keep (devin 09-10
-  // 08:17 #1). Curated/fixture totals are exact slices and keep theirs.
-  const countIsExact = result.source !== "met";
-  const nextCount = Math.min(SEARCH_PAGE_SIZE, remaining);
-  const canLoadMore =
-    isClient &&
-    live &&
-    !shownPath &&
-    !fillExhausted &&
-    remaining > 0 &&
-    page < SEARCH_MAX_PAGE &&
-    result.status !== "error";
-  // The cap note explains records left beyond the browse ceiling; when
-  // the usable stream already ran out (fillExhausted), that note owns the
-  // ending and a raw-total-derived `remaining` must not also fire the cap
-  // (devin 09-10 08:17 #2).
-  const atCap =
-    live &&
-    !shownPath &&
-    !fillExhausted &&
-    remaining > 0 &&
-    page >= SEARCH_MAX_PAGE;
+  // The load-more honesty decisions (exact-vs-upstream counts, the cap
+  // note, the exhausted stream) live in loadMoreState so they are
+  // behavior-tested rather than source-grepped (review 09-19 P2).
+  const { canLoadMore, countIsExact, nextCount, atCap } = loadMoreState({
+    source: result.source,
+    status: result.status,
+    live,
+    hasPath: Boolean(shownPath),
+    fillExhausted,
+    remaining,
+    page,
+    isClient,
+  });
 
   // The displayed order is the sequence the detail route's Previous/Next
-  // follows — persist it under the search identity so live-fetched works
-  // get working neighbors too (devin 09-09 06:17 P1).
+  // follows — persisted under an opaque token so live-fetched works get
+  // working neighbors too (devin 09-09 06:17 P1). The raw identity used
+  // to ride inside every detail URL and storage key (review 09-19 P2).
+  const seqToken = sequenceToken(searchKey);
   const seqIds = works.map((work) => work.id).join(",");
   const lastWrittenSeq = useRef("");
+  const worksRef = useRef(works);
   useEffect(() => {
-    const sig = `${searchKey}#${seqIds}`;
+    worksRef.current = works;
+  });
+  useEffect(() => {
+    const sig = `${seqToken}#${seqIds}`;
     if (lastWrittenSeq.current === sig) return;
-    lastWrittenSeq.current = sig;
-    writeBrowseSequence(searchKey, works);
-  }, [searchKey, seqIds, works]);
+    // Mark only a landed write — a quota-failed one must retry on the
+    // next identity change instead of being swallowed by the sig cache
+    // (review 09-19 P3). `works` comes through a ref: `seqIds` already
+    // captures the identity, and the fresh-array dep re-ran this
+    // needlessly every render.
+    if (writeBrowseSequence(seqToken, worksRef.current)) {
+      lastWrittenSeq.current = sig;
+    }
+  }, [seqToken, seqIds]);
 
   useEffect(() => setIsClient(true), []);
 
@@ -398,13 +400,12 @@ function Explore() {
           </ToggleGroup>
         </fieldset>
         <span className="explore-count mono">
-          {result.source === "met"
-            ? total > works.length
-              ? result.preFiltered === false
-                ? `${works.length} loaded · ${total} listed in the department`
-                : `${works.length} loaded · ${total} in the index`
-              : `${works.length} loaded`
-            : `${works.length} / ${total} review works`}
+          {exploreCountText({
+            source: result.source,
+            preFiltered: result.preFiltered,
+            total,
+            loaded: works.length,
+          })}
         </span>
         {query ||
         activePath ||
@@ -555,47 +556,19 @@ function Explore() {
         <>
           <section className="artwork-grid" aria-label="Collection results">
             {works.map((artwork) => (
-              <ArtworkCard key={artwork.id} artwork={artwork} seq={searchKey} />
+              <ArtworkCard key={artwork.id} artwork={artwork} seq={seqToken} />
             ))}
           </section>
-          {canLoadMore ? (
-            <div className="explore-more">
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                className="load-more"
-                aria-busy={isFilling}
-                disabled={isFilling}
-                onClick={loadMore}
-              >
-                {isFilling
-                  ? "Loading more…"
-                  : countIsExact
-                    ? `Load ${nextCount} more`
-                    : "Load more"}
-              </Button>
-            </div>
-          ) : null}
-          {fillFailed ? (
-            <p className="explore-fill-failed" role="status">
-              {atCap
-                ? "Some pages failed to load within the record cap — the grid shows what arrived."
-                : "Some pages failed to load — the grid shows what arrived. Load more to try again."}
-            </p>
-          ) : null}
-          {fillExhausted ? (
-            <p className="explore-fill-failed" role="status">
-              No further open-access works surfaced in the loaded records —
-              refine the search to look further.
-            </p>
-          ) : null}
-          {atCap ? (
-            <p className="explore-cap">
-              This view stops at {SEARCH_PAGE_SIZE * SEARCH_MAX_PAGE} records.
-              Narrow the search to look further.
-            </p>
-          ) : null}
+          <ExploreGridFooter
+            canLoadMore={canLoadMore}
+            isFilling={isFilling}
+            countIsExact={countIsExact}
+            nextCount={nextCount}
+            onLoadMore={loadMore}
+            fillFailed={fillFailed}
+            fillExhausted={fillExhausted}
+            atCap={atCap}
+          />
         </>
       ) : (
         <section aria-live="polite">
