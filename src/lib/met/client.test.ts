@@ -232,3 +232,55 @@ describe("fetchMetSearchIds cache value bound", () => {
     expect(result.total).toBe(ids.length);
   });
 });
+
+// Immutable upstream edge cache (fleet DST-meet-the-met-01): concurrent
+// same-key requests share one upstream fetch, and the edge tier keeps
+// serving after the isolate-local map is gone.
+describe("upstream edge cache", () => {
+  afterEach(() => {
+    clearMetCache();
+    vi.unstubAllGlobals();
+  });
+
+  it("dedupes concurrent requests for the same object", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return response(objectPayload(42));
+    }) as typeof fetch);
+
+    const [a, b] = await Promise.all([fetchMetObject(42), fetchMetObject(42)]);
+
+    expect(calls).toBe(1);
+    expect(a.id).toBe(42);
+    expect(b.id).toBe(42);
+  });
+
+  it("serves repeat reads from the edge after the local map is cleared", async () => {
+    const backing = new Map<string, string>();
+    vi.stubGlobal("caches", {
+      default: {
+        match: async (key: string) => {
+          const body = backing.get(key);
+          return body === undefined ? undefined : new Response(body);
+        },
+        put: async (key: string, res: Response) => {
+          backing.set(key, await res.text());
+        },
+      },
+    });
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      return response(objectPayload(7));
+    }) as typeof fetch);
+
+    await fetchMetObject(7);
+    clearMetCache(); // simulate a fresh isolate
+    const again = await fetchMetObject(7);
+
+    expect(calls).toBe(1);
+    expect(again.id).toBe(7);
+  });
+});

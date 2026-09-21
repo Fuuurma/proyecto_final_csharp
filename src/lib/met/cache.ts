@@ -73,4 +73,82 @@ export function setCached<T>(key: string, value: T, ttl: number): void {
 // needs to invalidate The Met data within a process lifetime.
 export function clearMetCache(): void {
   store.clear();
+  inflight.clear();
+}
+
+// --- Concurrent-request dedupe -------------------------------------------
+//
+// Concurrent same-key misses share one upstream load. Hydration fans out
+// page-size batches and isolates are shared across requests, so without
+// this a cold start issues duplicate upstream calls for overlapping keys.
+// Rejections are evicted immediately — a failed load never poisons the key.
+const inflight = new Map<string, Promise<unknown>>();
+
+export function dedupeMetFetch<T>(
+  key: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  const pending = inflight.get(key);
+  if (pending) return pending as Promise<T>;
+  const promise = load().finally(() => {
+    inflight.delete(key);
+  });
+  inflight.set(key, promise);
+  return promise;
+}
+
+// --- Edge tier (Cloudflare Cache API) ------------------------------------
+//
+// The Map above is isolate-local. `caches.default` is shared across
+// isolates and colos for the deployment lifetime, which is what makes the
+// upstream cache effective under real traffic. Met records are effectively
+// immutable, so edge TTLs run days while search stays in minutes.
+//
+// Where `caches` is absent (vitest, plain node) the tier silently no-ops
+// and the adapter falls back to the in-process map.
+export const EDGE_TTL_S = {
+  departments: 7 * 24 * 60 * 60, // 7d — department index is near-static
+  object: 7 * 24 * 60 * 60, // 7d — object records are effectively immutable
+  search: 10 * 60, // 10m — membership shifts as the collection is reindexed
+} as const;
+
+function edgeCache(): Cache | undefined {
+  const storage = (globalThis as { caches?: CacheStorage }).caches;
+  return (storage as (CacheStorage & { default?: Cache }) | undefined)?.default;
+}
+
+export async function getEdgeCached<T>(key: string): Promise<T | undefined> {
+  const cache = edgeCache();
+  if (!cache) return undefined;
+  try {
+    const hit = await cache.match(key);
+    return hit ? ((await hit.json()) as T) : undefined;
+  } catch {
+    // Edge failures degrade to an upstream fetch, never a failed request.
+    return undefined;
+  }
+}
+
+export async function setEdgeCached(
+  key: string,
+  value: unknown,
+  ttlSeconds: number,
+): Promise<void> {
+  const cache = edgeCache();
+  if (!cache) return;
+  try {
+    // Cache-Control: max-age is what expires the entry — the Cache API
+    // honours it on match, so no manual eviction is needed.
+    await cache.put(
+      key,
+      new Response(JSON.stringify(value), {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": `public, max-age=${ttlSeconds}`,
+        },
+      }),
+    );
+  } catch {
+    // A failed edge write still leaves the in-process entry warm.
+  }
 }

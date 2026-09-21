@@ -1,6 +1,14 @@
 import { curatedArtworks } from "@/data/curated-artworks";
 import type { MetDepartment } from "@/data/departments";
-import { CACHE_TTL_MS, getCached, setCached } from "./cache";
+import {
+  CACHE_TTL_MS,
+  dedupeMetFetch,
+  EDGE_TTL_S,
+  getCached,
+  getEdgeCached,
+  setCached,
+  setEdgeCached,
+} from "./cache";
 import { type Artwork, normalizeMetObject } from "./normalize";
 import {
   metDepartmentsSchema,
@@ -88,18 +96,11 @@ async function fetchJson(
   }
 }
 
-export async function fetchMetObject(
+async function loadMetObject(
+  url: string,
   objectId: number,
-  options: { fetcher?: typeof fetch; timeoutMs?: number } = {},
+  options: { fetcher?: typeof fetch; timeoutMs?: number },
 ): Promise<Artwork> {
-  const url = `${API_ROOT}/objects/${objectId}`;
-  const useCache = options.fetcher === undefined;
-
-  if (useCache) {
-    const cached = getCached<Artwork>(url);
-    if (cached) return cached;
-  }
-
   const payload = await fetchJson(
     url,
     options.fetcher ?? fetch,
@@ -119,24 +120,41 @@ export async function fetchMetObject(
   // too (c53e8ba removed the normalizer's magic-ID special case; without
   // this overlay, live searches showing 56353 lost "The Great Wave").
   const curated = curatedArtworks.find((a) => a.id === artwork.id);
-  const withCuratedTitle = curated?.displayTitle
+  return curated?.displayTitle
     ? { ...artwork, displayTitle: curated.displayTitle }
     : artwork;
-  if (useCache) setCached(url, withCuratedTitle, CACHE_TTL_MS.object);
-  return withCuratedTitle;
 }
 
-export async function fetchMetDepartments(
+export async function fetchMetObject(
+  objectId: number,
   options: { fetcher?: typeof fetch; timeoutMs?: number } = {},
+): Promise<Artwork> {
+  const url = `${API_ROOT}/objects/${objectId}`;
+  // A custom fetcher bypasses both cache tiers and dedupe so tests stay
+  // deterministic — caching is only for the production global-fetch path.
+  if (options.fetcher !== undefined)
+    return loadMetObject(url, objectId, options);
+
+  return dedupeMetFetch(url, async () => {
+    const cached =
+      getCached<Artwork>(url) ?? (await getEdgeCached<Artwork>(url));
+    if (cached) {
+      // An edge hit warms the isolate-local tier for repeat reads.
+      setCached(url, cached, CACHE_TTL_MS.object);
+      return cached;
+    }
+
+    const artwork = await loadMetObject(url, objectId, options);
+    setCached(url, artwork, CACHE_TTL_MS.object);
+    await setEdgeCached(url, artwork, EDGE_TTL_S.object);
+    return artwork;
+  });
+}
+
+async function loadMetDepartments(
+  url: string,
+  options: { fetcher?: typeof fetch; timeoutMs?: number },
 ): Promise<MetDepartment[]> {
-  const url = `${API_ROOT}/departments`;
-  const useCache = options.fetcher === undefined;
-
-  if (useCache) {
-    const cached = getCached<MetDepartment[]>(url);
-    if (cached) return cached;
-  }
-
   const payload = await fetchJson(
     url,
     options.fetcher ?? fetch,
@@ -151,17 +169,69 @@ export async function fetchMetDepartments(
     );
   }
 
-  const departments = parsed.data.departments.map((department) => ({
+  return parsed.data.departments.map((department) => ({
     id: department.departmentId,
     name: department.displayName,
   }));
-  if (useCache) setCached(url, departments, CACHE_TTL_MS.departments);
-  return departments;
+}
+
+export async function fetchMetDepartments(
+  options: { fetcher?: typeof fetch; timeoutMs?: number } = {},
+): Promise<MetDepartment[]> {
+  const url = `${API_ROOT}/departments`;
+  if (options.fetcher !== undefined) return loadMetDepartments(url, options);
+
+  return dedupeMetFetch(url, async () => {
+    const cached =
+      getCached<MetDepartment[]>(url) ??
+      (await getEdgeCached<MetDepartment[]>(url));
+    if (cached) {
+      setCached(url, cached, CACHE_TTL_MS.departments);
+      return cached;
+    }
+
+    const departments = await loadMetDepartments(url, options);
+    setCached(url, departments, CACHE_TTL_MS.departments);
+    await setEdgeCached(url, departments, EDGE_TTL_S.departments);
+    return departments;
+  });
 }
 
 /** ID-list entries above this size skip the cache: generous for any
  * real paging session (page size 24), small against a 128MB isolate. */
 export const MAX_CACHED_SEARCH_IDS = 20_000;
+
+export type MetSearchIds = {
+  total: number;
+  objectIds: number[];
+  preFiltered: boolean;
+};
+
+async function loadMetSearchIds(
+  cacheKey: string,
+  preFiltered: boolean,
+  options: { fetcher?: typeof fetch; timeoutMs?: number },
+): Promise<MetSearchIds> {
+  const payload = await fetchJson(
+    cacheKey,
+    options.fetcher ?? fetch,
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  );
+  const parsed = metSearchSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    throw new MetApiError(
+      "invalid",
+      "The Met search response did not match the expected shape",
+    );
+  }
+
+  return {
+    total: parsed.data.total,
+    objectIds: parsed.data.objectIDs ?? [],
+    preFiltered,
+  };
+}
 
 export async function fetchMetSearchIds(
   query: string,
@@ -171,7 +241,7 @@ export async function fetchMetSearchIds(
     limit?: number;
     departmentId?: number;
   } = {},
-): Promise<{ total: number; objectIds: number[]; preFiltered: boolean }> {
+): Promise<MetSearchIds> {
   let url: URL;
   // Whether the upstream ALREADY filtered to open-access rows decides how
   // the caller may interpret drops: /search honours the params, /objects
@@ -204,51 +274,40 @@ export async function fetchMetSearchIds(
   // The `limit` option is a caller-side slice, not part of the upstream
   // request, so it must not participate in the cache key.
   const cacheKey = url.toString();
-  const useCache = options.fetcher === undefined;
+  const slice = (result: MetSearchIds): MetSearchIds =>
+    options.limit === undefined
+      ? result
+      : { ...result, objectIds: result.objectIds.slice(0, options.limit) };
 
-  if (useCache) {
-    const cached = getCached<{
-      total: number;
-      objectIds: number[];
-      preFiltered: boolean;
-    }>(cacheKey);
+  if (options.fetcher !== undefined) {
+    return slice(await loadMetSearchIds(cacheKey, preFiltered, options));
+  }
+
+  const result = await dedupeMetFetch(cacheKey, async () => {
+    const cached =
+      getCached<MetSearchIds>(cacheKey) ??
+      (await getEdgeCached<MetSearchIds>(cacheKey));
     if (cached) {
-      return options.limit === undefined
-        ? cached
-        : { ...cached, objectIds: cached.objectIds.slice(0, options.limit) };
+      setCached(cacheKey, cached, CACHE_TTL_MS.search);
+      return cached;
     }
-  }
 
-  const payload = await fetchJson(
-    cacheKey,
-    options.fetcher ?? fetch,
-    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-  );
-  const parsed = metSearchSchema.safeParse(payload);
+    const loaded = await loadMetSearchIds(cacheKey, preFiltered, options);
 
-  if (!parsed.success) {
-    throw new MetApiError(
-      "invalid",
-      "The Met search response did not match the expected shape",
-    );
-  }
-
-  const objectIds = parsed.data.objectIDs ?? [];
-  const result = { total: parsed.data.total, objectIds, preFiltered };
-
-  // Value-size bound: MAX_ENTRIES bounds the cache by KEY count, not
-  // weight — a whole-department /objects listing (~100k ids) or a bare
-  // q=* search (~470k ids) would ride in as a single entry, and a burst
-  // of large listings pressures the Worker isolate's memory (devin
-  // 09-10 12:50 P1). Oversize listings still serve, just uncached: the
-  // 60s TTL would forget them mid-paging anyway, and refetching is the
-  // same upstream cost the no-cache path always paid.
-  if (useCache && objectIds.length <= MAX_CACHED_SEARCH_IDS) {
-    setCached(cacheKey, result, CACHE_TTL_MS.search);
-  }
-  return options.limit === undefined
-    ? result
-    : { ...result, objectIds: objectIds.slice(0, options.limit) };
+    // Value-size bound: MAX_ENTRIES bounds the cache by KEY count, not
+    // weight — a whole-department /objects listing (~100k ids) or a bare
+    // q=* search (~470k ids) would ride in as a single entry, and a burst
+    // of large listings pressures the Worker isolate's memory (devin
+    // 09-10 12:50 P1). Oversize listings still serve, just uncached: the
+    // search TTL would forget them mid-paging anyway, and refetching is
+    // the same upstream cost the no-cache path always paid.
+    if (loaded.objectIds.length <= MAX_CACHED_SEARCH_IDS) {
+      setCached(cacheKey, loaded, CACHE_TTL_MS.search);
+      await setEdgeCached(cacheKey, loaded, EDGE_TTL_S.search);
+    }
+    return loaded;
+  });
+  return slice(result);
 }
 
 export async function fetchMetObjects(
