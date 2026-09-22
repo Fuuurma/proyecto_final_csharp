@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearMetCache } from "./cache";
+import { clearMetCache, getCached, setCached } from "./cache";
 import {
   fetchMetDepartments,
   fetchMetObject,
   fetchMetObjects,
   fetchMetSearchIds,
   MAX_CACHED_SEARCH_IDS,
+  resetMetCircuitBreaker,
   SEARCH_PAGE_SIZE,
   sliceSearchPage,
 } from "./client.server";
@@ -30,6 +31,7 @@ function objectPayload(objectID: number) {
 describe("Met API adapter", () => {
   afterEach(() => {
     clearMetCache();
+    resetMetCircuitBreaker();
   });
 
   it("limits search IDs and requests public-domain image-backed results", async () => {
@@ -172,6 +174,80 @@ describe("Met API adapter", () => {
 
     const artwork = await fetchMetObject(999999, { fetcher: rawFetcher });
     expect(artwork.displayTitle).toBe("Some other object");
+  });
+});
+
+describe("Met API circuit breaker", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    clearMetCache();
+    resetMetCircuitBreaker();
+  });
+
+  it("opens after three failures and blocks another network request", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      throw new Error("upstream down");
+    };
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(fetchMetDepartments({ fetcher })).rejects.toMatchObject({
+        kind: "unavailable",
+      });
+    }
+    await expect(fetchMetDepartments({ fetcher })).rejects.toMatchObject({
+      kind: "unavailable",
+    });
+    expect(calls).toBe(3);
+  });
+
+  it("serves a stale department response while open", async () => {
+    vi.useFakeTimers();
+    const url =
+      "https://collectionapi.metmuseum.org/public/collection/v1/departments";
+    const stale = [{ id: 6, name: "Asian Art" }];
+    setCached(url, stale, 1);
+    vi.advanceTimersByTime(2);
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      throw new Error("upstream down");
+    }) as typeof fetch);
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(fetchMetDepartments()).resolves.toEqual(stale);
+    }
+    await expect(fetchMetDepartments()).resolves.toEqual(stale);
+    expect(calls).toBe(3);
+    expect(getCached(url)).toBeUndefined();
+  });
+
+  it("closes after a successful half-open probe", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      if (calls <= 3) throw new Error("upstream down");
+      return response({
+        departments: [{ departmentId: 6, displayName: "Asian Art" }],
+      });
+    };
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(fetchMetDepartments({ fetcher })).rejects.toMatchObject({
+        kind: "unavailable",
+      });
+    }
+    vi.advanceTimersByTime(30_000);
+    await expect(fetchMetDepartments({ fetcher })).resolves.toEqual([
+      { id: 6, name: "Asian Art" },
+    ]);
+    await expect(fetchMetDepartments({ fetcher })).resolves.toEqual([
+      { id: 6, name: "Asian Art" },
+    ]);
+    expect(calls).toBe(5);
   });
 });
 
