@@ -53,22 +53,6 @@ const exploreSearchSchema = z.object({
 });
 
 export const Route = createFileRoute("/explore")({
-  head: () => ({
-    meta: [
-      { title: "Explore — Meet the Met" },
-      {
-        name: "description",
-        content:
-          "Search the Open Access index by keyword, department, or curated path. Every result links to the canonical Met record.",
-      },
-      { property: "og:title", content: "Explore — Meet the Met" },
-      {
-        property: "og:description",
-        content:
-          "Search the Open Access index by keyword, department, or curated path.",
-      },
-    ],
-  }),
   validateSearch: (search) => {
     const parsed = exploreSearchSchema.safeParse(search);
     if (parsed.success) return parsed.data;
@@ -103,6 +87,22 @@ export const Route = createFileRoute("/explore")({
       },
     }),
   pendingComponent: ExplorePending,
+  head: () => ({
+    meta: [
+      { title: "Explore — Meet the Met" },
+      {
+        name: "description",
+        content:
+          "Search the Open Access index by keyword, department, or curated path. Every result links to the canonical Met record.",
+      },
+      { property: "og:title", content: "Explore — Meet the Met" },
+      {
+        property: "og:description",
+        content:
+          "Search the Open Access index by keyword, department, or curated path.",
+      },
+    ],
+  }),
   component: Explore,
 });
 

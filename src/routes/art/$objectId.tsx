@@ -41,6 +41,17 @@ import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/art/$objectId")({
+  loader: ({ params }) => {
+    // Non-numeric slugs (/art/abc) are a wrong address, not a validator
+    // error — 404 instead of surfacing the Zod failure through RouteError
+    // (devin 09-09 16:57 #1).
+    const objectId = Number(params.objectId);
+    if (!Number.isInteger(objectId) || objectId <= 0) {
+      throw notFound();
+    }
+    return getArtwork({ data: { objectId } });
+  },
+  pendingComponent: ArtworkDetailPending,
   head: ({ loaderData }: { loaderData?: ArtworkDetailResult }) => {
     const meta: Array<Record<string, string>> = [
       { title: "Object unavailable — Meet the Met" },
@@ -72,17 +83,6 @@ export const Route = createFileRoute("/art/$objectId")({
 
     return { meta };
   },
-  loader: ({ params }) => {
-    // Non-numeric slugs (/art/abc) are a wrong address, not a validator
-    // error — 404 instead of surfacing the Zod failure through RouteError
-    // (devin 09-09 16:57 #1).
-    const objectId = Number(params.objectId);
-    if (!Number.isInteger(objectId) || objectId <= 0) {
-      throw notFound();
-    }
-    return getArtwork({ data: { objectId } });
-  },
-  pendingComponent: ArtworkDetailPending,
   component: ArtworkDetail,
 });
 
