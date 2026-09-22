@@ -9,10 +9,13 @@ export function getRelatedArtworks(
   const sameMaker = artwork.artist
     ? candidates.filter((candidate) => candidate.artist === artwork.artist)
     : [];
+  // Tag membership via Set — includes() inside the catalog filter was
+  // O(catalog x tags x tags) (react-doctor 09-23 js-set-map-lookups).
+  const artworkTagSet = new Set(artwork.tags);
   const sharedSubjects =
     artwork.tags.length > 0
       ? candidates.filter((candidate) =>
-          candidate.tags.some((tag) => artwork.tags.includes(tag)),
+          candidate.tags.some((tag) => artworkTagSet.has(tag)),
         )
       : [];
   const sameDepartment = artwork.department
