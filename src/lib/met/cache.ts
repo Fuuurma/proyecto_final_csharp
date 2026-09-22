@@ -26,17 +26,17 @@ export const CACHE_TTL_MS = {
 export function getCached<T>(key: string): T | undefined {
   const entry = store.get(key);
   if (!entry) return undefined;
-  if (Date.now() > entry.expiresAt) {
-    store.delete(key);
-    return undefined;
-  }
+  if (Date.now() > entry.expiresAt) return undefined;
   return entry.value as T;
 }
 
-/** Evicted entries keep the isolate-local map bounded: expired entries
- * only delete on read otherwise, so diverse search traffic (a new key per
- * query) would accumulate dead entries until the isolate dies. The cap is
- * generous — the point is a bound, not an LRU. */
+export function getStaleCached<T>(key: string): T | undefined {
+  return store.get(key)?.value as T | undefined;
+}
+
+/** Evicted entries keep the isolate-local map bounded: expired entries stay
+ * available for stale-on-error reads until a sweep, overwrite, or capacity
+ * eviction. The cap is generous — the point is a bound, not an LRU. */
 export const MAX_ENTRIES = 500;
 
 function sweepExpired(): void {

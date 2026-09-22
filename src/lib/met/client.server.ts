@@ -6,6 +6,7 @@ import {
   EDGE_TTL_S,
   getCached,
   getEdgeCached,
+  getStaleCached,
   setCached,
   setEdgeCached,
 } from "./cache";
@@ -23,7 +24,48 @@ export {
 } from "./search-query";
 
 const API_ROOT = "https://collectionapi.metmuseum.org/public/collection/v1";
-const DEFAULT_TIMEOUT_MS = 8_000;
+const DEFAULT_TIMEOUT_MS = 3_000;
+const CIRCUIT_FAILURE_LIMIT = 3;
+const CIRCUIT_OPEN_MS = 30_000;
+let consecutiveFailures = 0;
+let circuitOpenedAt: number | undefined;
+let probeInFlight = false;
+
+export function resetMetCircuitBreaker(): void {
+  consecutiveFailures = 0;
+  circuitOpenedAt = undefined;
+  probeInFlight = false;
+}
+
+async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  if (circuitOpenedAt !== undefined) {
+    if (now - circuitOpenedAt < CIRCUIT_OPEN_MS || probeInFlight) {
+      throw new MetApiError("unavailable", "The Met API circuit is open");
+    }
+    probeInFlight = true;
+  }
+
+  try {
+    const result = await load();
+    consecutiveFailures = 0;
+    circuitOpenedAt = undefined;
+    return result;
+  } catch (error) {
+    if (
+      error instanceof MetApiError &&
+      (error.kind === "timeout" || error.kind === "unavailable")
+    ) {
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= CIRCUIT_FAILURE_LIMIT) {
+        circuitOpenedAt = Date.now();
+      }
+    }
+    throw error;
+  } finally {
+    probeInFlight = false;
+  }
+}
 
 export type MetApiErrorKind =
   | "timeout"
@@ -52,48 +94,55 @@ async function fetchJson(
   fetcher: typeof fetch,
   timeoutMs: number,
 ): Promise<unknown> {
-  let response: Response;
+  return withMetCircuit(async () => {
+    let response: Response;
 
-  try {
-    response = await fetcher(url, {
-      signal: withTimeout(timeoutMs),
-      headers: {
-        "User-Agent":
-          "MeetTheMet/1.0 (Collection Explorer; portfolio rebuild; https://github.com)",
-        Accept: "application/json",
-      },
-    });
-  } catch (error) {
-    const name =
-      error && typeof error === "object" && "name" in error ? error.name : null;
-    if (name === "TimeoutError" || name === "AbortError") {
-      throw new MetApiError("timeout", `The Met request timed out: ${url}`);
+    try {
+      response = await fetcher(url, {
+        signal: withTimeout(timeoutMs),
+        headers: {
+          "User-Agent":
+            "MeetTheMet/1.0 (Collection Explorer; portfolio rebuild; https://github.com)",
+          Accept: "application/json",
+        },
+      });
+    } catch (error) {
+      const name =
+        error && typeof error === "object" && "name" in error
+          ? error.name
+          : null;
+      if (name === "TimeoutError" || name === "AbortError") {
+        throw new MetApiError("timeout", `The Met request timed out: ${url}`);
+      }
+
+      throw new MetApiError("unavailable", `The Met request failed: ${url}`);
     }
 
-    throw new MetApiError("unavailable", `The Met request failed: ${url}`);
-  }
+    if (response.status === 404) {
+      throw new MetApiError(
+        "not-found",
+        `The Met object was not found: ${url}`,
+        404,
+      );
+    }
 
-  if (response.status === 404) {
-    throw new MetApiError(
-      "not-found",
-      `The Met object was not found: ${url}`,
-      404,
-    );
-  }
+    if (!response.ok) {
+      throw new MetApiError(
+        "unavailable",
+        `The Met API returned ${response.status}`,
+        response.status,
+      );
+    }
 
-  if (!response.ok) {
-    throw new MetApiError(
-      "unavailable",
-      `The Met API returned ${response.status}`,
-      response.status,
-    );
-  }
-
-  try {
-    return await response.json();
-  } catch {
-    throw new MetApiError("invalid", `The Met returned malformed JSON: ${url}`);
-  }
+    try {
+      return await response.json();
+    } catch {
+      throw new MetApiError(
+        "invalid",
+        `The Met returned malformed JSON: ${url}`,
+      );
+    }
+  });
 }
 
 async function loadMetObject(
@@ -144,7 +193,19 @@ export async function fetchMetObject(
       return cached;
     }
 
-    const artwork = await loadMetObject(url, objectId, options);
+    let artwork: Artwork;
+    try {
+      artwork = await loadMetObject(url, objectId, options);
+    } catch (error) {
+      const stale = getStaleCached<Artwork>(url);
+      if (
+        stale &&
+        error instanceof MetApiError &&
+        (error.kind === "timeout" || error.kind === "unavailable")
+      )
+        return stale;
+      throw error;
+    }
     setCached(url, artwork, CACHE_TTL_MS.object);
     await setEdgeCached(url, artwork, EDGE_TTL_S.object);
     return artwork;
@@ -190,7 +251,19 @@ export async function fetchMetDepartments(
       return cached;
     }
 
-    const departments = await loadMetDepartments(url, options);
+    let departments: MetDepartment[];
+    try {
+      departments = await loadMetDepartments(url, options);
+    } catch (error) {
+      const stale = getStaleCached<MetDepartment[]>(url);
+      if (
+        stale &&
+        error instanceof MetApiError &&
+        (error.kind === "timeout" || error.kind === "unavailable")
+      )
+        return stale;
+      throw error;
+    }
     setCached(url, departments, CACHE_TTL_MS.departments);
     await setEdgeCached(url, departments, EDGE_TTL_S.departments);
     return departments;
@@ -292,7 +365,19 @@ export async function fetchMetSearchIds(
       return cached;
     }
 
-    const loaded = await loadMetSearchIds(cacheKey, preFiltered, options);
+    let loaded: MetSearchIds;
+    try {
+      loaded = await loadMetSearchIds(cacheKey, preFiltered, options);
+    } catch (error) {
+      const stale = getStaleCached<MetSearchIds>(cacheKey);
+      if (
+        stale &&
+        error instanceof MetApiError &&
+        (error.kind === "timeout" || error.kind === "unavailable")
+      )
+        return stale;
+      throw error;
+    }
 
     // Value-size bound: MAX_ENTRIES bounds the cache by KEY count, not
     // weight — a whole-department /objects listing (~100k ids) or a bare
