@@ -270,6 +270,34 @@ describe("searchCollection", () => {
     expect(result.message).toMatch(/No open-access works matched/);
   });
 
+  it("partial hydration with an empty curated fallback is not a true empty", async () => {
+    // needs-work 09-24 P2: hydrated.length < pageIds.length means some
+    // rows never loaded — reporting "No open-access works matched"
+    // claims certainty about rows that were never checked.
+    setFixtureMode(false);
+    fetchMetSearchIds.mockResolvedValueOnce({
+      total: 100,
+      objectIds: Array.from({ length: 36 }, (_, i) => i + 1),
+      preFiltered: true,
+    });
+    // Only 2 of the promised window hydrate AND neither survives the
+    // open-access sieve; curated has nothing for this query either.
+    fetchMetObjects.mockResolvedValueOnce([
+      { ...artwork(1), isPublicDomain: false },
+      { ...artwork(2), isPublicDomain: false },
+    ]);
+
+    const result = await searchCollection({
+      data: { q: "zzqxj no curated match", department: "all", page: 1 },
+    });
+    expect(result.status).toBe("partial");
+    expect(result.source).toBe("met");
+    expect(result.artworks).toEqual([]);
+    expect(result.message).toMatch(
+      /couldn't be fully checked|answering slowly/i,
+    );
+  });
+
   it("an upstream failure with curated matches degrades to partial", async () => {
     setFixtureMode(false);
     fetchMetSearchIds.mockRejectedValueOnce(new Error("upstream down"));

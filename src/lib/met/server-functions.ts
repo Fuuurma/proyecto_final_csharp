@@ -238,7 +238,28 @@ export const searchCollection = createServerFn({ method: "GET" })
 
       // Fully hydrated, zero usable after the sieve: genuinely no
       // open-access matches — honest empty (devin 09-10 08:10 / 06:57).
+      // Partial hydration is NOT a genuine empty: the unloaded
+      // remainder may hold open-access works, so the zero-usable case
+      // degrades honestly instead of claiming certainty
+      // (needs-work 09-24 P2).
       if (artworks.length === 0) {
+        if (hydrated.length < pageIds.length) {
+          return {
+            status: "partial",
+            source: "met",
+            query: q,
+            department:
+              (mappedDepartmentId !== undefined
+                ? departmentNameById(mappedDepartmentId)
+                : undefined) ?? mappedDepartment,
+            departmentId: mappedDepartmentId,
+            total: search.total,
+            preFiltered: search.preFiltered,
+            artworks: [],
+            message:
+              "The live Met collection is answering slowly; this page couldn't be fully checked.",
+          };
+        }
         return {
           status: "empty",
           source: "met",
