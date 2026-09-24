@@ -177,6 +177,76 @@ describe("Met API adapter", () => {
   });
 });
 
+// Jittered retry (fleet BE-meet-the-met-01): idempotent GETs retry at
+// most twice, and only on transient failures — 4xx and parse are
+// deterministic, an open circuit fails fast.
+describe("Met API retry", () => {
+  const noopSleep = async () => {};
+
+  afterEach(() => {
+    clearMetCache();
+    resetMetCircuitBreaker();
+  });
+
+  it("retries a transient 5xx with backoff, then succeeds", async () => {
+    const sleep = vi.fn(async (_ms: number) => {});
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return calls < 3
+        ? response({ message: "overloaded" }, 503)
+        : response(objectPayload(7));
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep, random: () => 0.5 } }),
+    ).resolves.toMatchObject({ id: 7 });
+    expect(calls).toBe(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+    // Full jitter, attempt 0: delay < base (150ms) for any prng < 1.
+    expect(sleep.mock.calls[0]?.[0]).toBeLessThan(150);
+  });
+
+  it("gives up after two retries on persistent 5xx", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return response({ message: "overloaded" }, 503);
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep: noopSleep } }),
+    ).rejects.toMatchObject({ kind: "5xx", status: 503 });
+    expect(calls).toBe(3);
+  });
+
+  it("does not retry a 4xx rejection", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return response({ message: "bad request" }, 400);
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep: noopSleep } }),
+    ).rejects.toMatchObject({ kind: "4xx", status: 400 });
+    expect(calls).toBe(1);
+  });
+
+  it("does not retry an unparseable body", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return new Response("not json", { status: 200 });
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep: noopSleep } }),
+    ).rejects.toMatchObject({ kind: "parse" });
+    expect(calls).toBe(1);
+  });
+});
+
 describe("Met API circuit breaker", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -194,12 +264,14 @@ describe("Met API circuit breaker", () => {
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await expect(fetchMetDepartments({ fetcher })).rejects.toMatchObject({
-        kind: "unavailable",
+        kind: "5xx",
       });
     }
     await expect(fetchMetDepartments({ fetcher })).rejects.toMatchObject({
-      kind: "unavailable",
+      kind: "5xx",
     });
+    // The first call alone exhausts its three retry attempts and trips
+    // the breaker; the next three fail fast on the open circuit.
     expect(calls).toBe(3);
   });
 
@@ -215,11 +287,13 @@ describe("Met API circuit breaker", () => {
       calls += 1;
       throw new Error("upstream down");
     }) as typeof fetch);
+    // Fake timers are active — a real backoff sleep would never resolve.
+    const retry = { sleep: async () => {} };
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      await expect(fetchMetDepartments()).resolves.toEqual(stale);
+      await expect(fetchMetDepartments({ retry })).resolves.toEqual(stale);
     }
-    await expect(fetchMetDepartments()).resolves.toEqual(stale);
+    await expect(fetchMetDepartments({ retry })).resolves.toEqual(stale);
     expect(calls).toBe(3);
     expect(getCached(url)).toBeUndefined();
   });
@@ -235,16 +309,19 @@ describe("Met API circuit breaker", () => {
       });
     };
 
+    const retry = { sleep: async () => {} };
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      await expect(fetchMetDepartments({ fetcher })).rejects.toMatchObject({
-        kind: "unavailable",
+      await expect(
+        fetchMetDepartments({ fetcher, retry }),
+      ).rejects.toMatchObject({
+        kind: "5xx",
       });
     }
     vi.advanceTimersByTime(30_000);
-    await expect(fetchMetDepartments({ fetcher })).resolves.toEqual([
+    await expect(fetchMetDepartments({ fetcher, retry })).resolves.toEqual([
       { id: 6, name: "Asian Art" },
     ]);
-    await expect(fetchMetDepartments({ fetcher })).resolves.toEqual([
+    await expect(fetchMetDepartments({ fetcher, retry })).resolves.toEqual([
       { id: 6, name: "Asian Art" },
     ]);
     expect(calls).toBe(5);

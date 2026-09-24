@@ -23,7 +23,11 @@ import {
   SEARCH_MAX_PAGE,
   takeOpenAccessPage,
 } from "./search-query";
-import { computeSearchStatus } from "./search-status";
+import {
+  computeSearchStatus,
+  type SearchFailureKind,
+  searchFailureKind,
+} from "./search-status";
 
 const collectionSearchInputSchema = z.object({
   q: z.string().trim().max(120).default(""),
@@ -52,6 +56,12 @@ export type CollectionSearchResult = {
   preFiltered?: boolean;
   artworks: Artwork[];
   message?: string;
+  /**
+   * Typed upstream failure ("timeout" | "5xx" | "4xx" | "parse") when the
+   * live Met call behind this result threw — lets the UI distinguish
+   * "Met down" from "no results" instead of reading `message`.
+   */
+  failure?: SearchFailureKind;
 };
 
 export type ArtworkDetailResult =
@@ -65,6 +75,7 @@ export type ArtworkDetailResult =
       source: "fixture" | "met";
       artwork: null;
       message: string;
+      failure?: SearchFailureKind;
     };
 
 export type DepartmentIndexResult = {
@@ -72,6 +83,7 @@ export type DepartmentIndexResult = {
   source: "fixture" | "met";
   departments: MetDepartment[];
   message?: string;
+  failure?: SearchFailureKind;
 };
 
 const missingDepartmentFilter = "__none__";
@@ -131,12 +143,14 @@ function apiErrorMessage(error: unknown, subject: string): string {
   switch (error.kind) {
     case "timeout":
       return `The ${subject} took too long to answer. Try again in a moment.`;
-    case "invalid":
-      return `The ${subject} returned an unreadable record. Try another search.`;
-    case "not-found":
-      return "That object is not available in the public collection right now.";
-    case "unavailable":
+    case "5xx":
       return `The ${subject} is temporarily unavailable. Try again in a moment.`;
+    case "4xx":
+      return error.status === 404
+        ? "That object is not available in the public collection right now."
+        : `The ${subject} could not answer that request. Try another search.`;
+    case "parse":
+      return `The ${subject} returned an unreadable record. Try another search.`;
   }
 }
 
@@ -304,6 +318,7 @@ export const searchCollection = createServerFn({ method: "GET" })
           status: "partial",
           message:
             "The live Met collection is answering slowly. Showing committed works from this room.",
+          failure: searchFailureKind(error),
         };
       }
 
@@ -319,6 +334,7 @@ export const searchCollection = createServerFn({ method: "GET" })
         total: 0,
         artworks: [],
         message: apiErrorMessage(error, "Met collection search"),
+        failure: searchFailureKind(error),
       };
     }
   });
@@ -352,6 +368,7 @@ export const getArtwork = createServerFn({ method: "GET" })
         source: "met",
         artwork: null,
         message: apiErrorMessage(error, "Met object record"),
+        failure: searchFailureKind(error),
       };
     }
   });
@@ -381,6 +398,7 @@ export const listDepartments = createServerFn({ method: "GET" }).handler(
         source: "fixture",
         departments: metDepartments,
         message: apiErrorMessage(error, "Met department index"),
+        failure: searchFailureKind(error),
       };
     }
   },

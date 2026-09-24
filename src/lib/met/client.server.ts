@@ -41,7 +41,13 @@ async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
   const now = Date.now();
   if (circuitOpenedAt !== undefined) {
     if (now - circuitOpenedAt < CIRCUIT_OPEN_MS || probeInFlight) {
-      throw new MetApiError("unavailable", "The Met API circuit is open");
+      // An open circuit must fail fast — never queued for a retry.
+      throw new MetApiError(
+        "5xx",
+        "The Met API circuit is open",
+        undefined,
+        false,
+      );
     }
     probeInFlight = true;
   }
@@ -54,7 +60,7 @@ async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
   } catch (error) {
     if (
       error instanceof MetApiError &&
-      (error.kind === "timeout" || error.kind === "unavailable")
+      (error.kind === "timeout" || error.kind === "5xx")
     ) {
       consecutiveFailures += 1;
       if (consecutiveFailures >= CIRCUIT_FAILURE_LIMIT) {
@@ -67,21 +73,34 @@ async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
   }
 }
 
-export type MetApiErrorKind =
-  | "timeout"
-  | "unavailable"
-  | "invalid"
-  | "not-found";
+// Upstream failure taxonomy: "timeout" (the request never answered),
+// "5xx" (the Met is down — a 5xx response OR a transport failure with no
+// response at all, which reads the same to a caller), "4xx" (the request
+// itself was rejected; `status` keeps 404 distinguishable), and "parse"
+// (the upstream answered with something unreadable or off-schema).
+export type MetApiErrorKind = "timeout" | "5xx" | "4xx" | "parse";
 
 export class MetApiError extends Error {
   readonly kind: MetApiErrorKind;
   readonly status: number | undefined;
+  /**
+   * Whether another attempt could plausibly succeed: transient upstream
+   * conditions only. 4xx and parse failures are deterministic, and an
+   * open circuit must fail fast.
+   */
+  readonly retryable: boolean;
 
-  constructor(kind: MetApiErrorKind, message: string, status?: number) {
+  constructor(
+    kind: MetApiErrorKind,
+    message: string,
+    status?: number,
+    retryable?: boolean,
+  ) {
     super(message);
     this.name = "MetApiError";
     this.kind = kind;
     this.status = status;
+    this.retryable = retryable ?? (kind === "timeout" || kind === "5xx");
   }
 }
 
@@ -89,7 +108,35 @@ function withTimeout(timeoutMs: number): AbortSignal {
   return AbortSignal.timeout(timeoutMs);
 }
 
-async function fetchJson(
+const RETRY_MAX_ATTEMPTS = 3; // one attempt + at most two retries
+const RETRY_BASE_DELAY_MS = 150;
+const RETRY_MAX_DELAY_MS = 1_000;
+
+export type MetRetryOptions = {
+  /** Total attempts for one request — default 3 (at most two retries). */
+  attempts?: number;
+  /** Sleep between attempts; tests inject a noop under fake timers. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Jitter source; tests inject a deterministic PRNG. */
+  random?: () => number;
+};
+
+function defaultRetrySleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Full jitter: uniform in [0, min(cap, base * 2^attempt)) so a burst of
+// retrying callers does not re-synchronize against an upstream that is
+// already struggling.
+function retryDelayMs(attempt: number, random: () => number): number {
+  const ceiling = Math.min(
+    RETRY_MAX_DELAY_MS,
+    RETRY_BASE_DELAY_MS * 2 ** attempt,
+  );
+  return Math.floor(random() * ceiling);
+}
+
+async function fetchJsonOnce(
   url: string,
   fetcher: typeof fetch,
   timeoutMs: number,
@@ -115,21 +162,17 @@ async function fetchJson(
         throw new MetApiError("timeout", `The Met request timed out: ${url}`);
       }
 
-      throw new MetApiError("unavailable", `The Met request failed: ${url}`);
-    }
-
-    if (response.status === 404) {
-      throw new MetApiError(
-        "not-found",
-        `The Met object was not found: ${url}`,
-        404,
-      );
+      // No response at all — DNS, refused connection, TLS. Reads as
+      // "the Met is down", the same bucket as a 5xx for the caller.
+      throw new MetApiError("5xx", `The Met request failed: ${url}`);
     }
 
     if (!response.ok) {
       throw new MetApiError(
-        "unavailable",
-        `The Met API returned ${response.status}`,
+        response.status >= 500 ? "5xx" : "4xx",
+        response.status === 404
+          ? `The Met object was not found: ${url}`
+          : `The Met API returned ${response.status}`,
         response.status,
       );
     }
@@ -137,29 +180,60 @@ async function fetchJson(
     try {
       return await response.json();
     } catch {
-      throw new MetApiError(
-        "invalid",
-        `The Met returned malformed JSON: ${url}`,
-      );
+      throw new MetApiError("parse", `The Met returned malformed JSON: ${url}`);
     }
   });
 }
 
+async function fetchJson(
+  url: string,
+  fetcher: typeof fetch,
+  timeoutMs: number,
+  retry?: MetRetryOptions,
+): Promise<unknown> {
+  // Every upstream call is an idempotent GET, so retrying is always safe;
+  // `retryable` decides whether the failure deserves another attempt.
+  const attempts = Math.max(
+    1,
+    Math.floor(retry?.attempts ?? RETRY_MAX_ATTEMPTS),
+  );
+  const sleep = retry?.sleep ?? defaultRetrySleep;
+  const random = retry?.random ?? Math.random;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetchJsonOnce(url, fetcher, timeoutMs);
+    } catch (error) {
+      const retryable = error instanceof MetApiError && error.retryable;
+      if (!retryable || attempt + 1 >= attempts) throw error;
+      await sleep(retryDelayMs(attempt, random));
+    }
+  }
+  throw new Error("unreachable");
+}
+
+type MetRequestOptions = {
+  fetcher?: typeof fetch;
+  timeoutMs?: number;
+  retry?: MetRetryOptions;
+};
+
 async function loadMetObject(
   url: string,
   objectId: number,
-  options: { fetcher?: typeof fetch; timeoutMs?: number },
+  options: MetRequestOptions,
 ): Promise<Artwork> {
   const payload = await fetchJson(
     url,
     options.fetcher ?? fetch,
     options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    options.retry,
   );
 
   const parsed = metObjectSchema.safeParse(payload);
   if (!parsed.success) {
     throw new MetApiError(
-      "invalid",
+      "parse",
       `The Met object ${objectId} did not match the expected shape`,
     );
   }
@@ -176,7 +250,7 @@ async function loadMetObject(
 
 export async function fetchMetObject(
   objectId: number,
-  options: { fetcher?: typeof fetch; timeoutMs?: number } = {},
+  options: MetRequestOptions = {},
 ): Promise<Artwork> {
   const url = `${API_ROOT}/objects/${objectId}`;
   // A custom fetcher bypasses both cache tiers and dedupe so tests stay
@@ -201,7 +275,7 @@ export async function fetchMetObject(
       if (
         stale &&
         error instanceof MetApiError &&
-        (error.kind === "timeout" || error.kind === "unavailable")
+        (error.kind === "timeout" || error.kind === "5xx")
       )
         return stale;
       throw error;
@@ -214,18 +288,19 @@ export async function fetchMetObject(
 
 async function loadMetDepartments(
   url: string,
-  options: { fetcher?: typeof fetch; timeoutMs?: number },
+  options: MetRequestOptions,
 ): Promise<MetDepartment[]> {
   const payload = await fetchJson(
     url,
     options.fetcher ?? fetch,
     options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    options.retry,
   );
   const parsed = metDepartmentsSchema.safeParse(payload);
 
   if (!parsed.success) {
     throw new MetApiError(
-      "invalid",
+      "parse",
       "The Met department index did not match the expected shape",
     );
   }
@@ -237,7 +312,7 @@ async function loadMetDepartments(
 }
 
 export async function fetchMetDepartments(
-  options: { fetcher?: typeof fetch; timeoutMs?: number } = {},
+  options: MetRequestOptions = {},
 ): Promise<MetDepartment[]> {
   const url = `${API_ROOT}/departments`;
   if (options.fetcher !== undefined) return loadMetDepartments(url, options);
@@ -259,7 +334,7 @@ export async function fetchMetDepartments(
       if (
         stale &&
         error instanceof MetApiError &&
-        (error.kind === "timeout" || error.kind === "unavailable")
+        (error.kind === "timeout" || error.kind === "5xx")
       )
         return stale;
       throw error;
@@ -283,18 +358,19 @@ export type MetSearchIds = {
 async function loadMetSearchIds(
   cacheKey: string,
   preFiltered: boolean,
-  options: { fetcher?: typeof fetch; timeoutMs?: number },
+  options: MetRequestOptions,
 ): Promise<MetSearchIds> {
   const payload = await fetchJson(
     cacheKey,
     options.fetcher ?? fetch,
     options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    options.retry,
   );
   const parsed = metSearchSchema.safeParse(payload);
 
   if (!parsed.success) {
     throw new MetApiError(
-      "invalid",
+      "parse",
       "The Met search response did not match the expected shape",
     );
   }
@@ -308,9 +384,7 @@ async function loadMetSearchIds(
 
 export async function fetchMetSearchIds(
   query: string,
-  options: {
-    fetcher?: typeof fetch;
-    timeoutMs?: number;
+  options: MetRequestOptions & {
     limit?: number;
     departmentId?: number;
   } = {},
@@ -373,7 +447,7 @@ export async function fetchMetSearchIds(
       if (
         stale &&
         error instanceof MetApiError &&
-        (error.kind === "timeout" || error.kind === "unavailable")
+        (error.kind === "timeout" || error.kind === "5xx")
       )
         return stale;
       throw error;
@@ -397,10 +471,8 @@ export async function fetchMetSearchIds(
 
 export async function fetchMetObjects(
   objectIds: number[],
-  options: {
+  options: MetRequestOptions & {
     concurrency?: number;
-    fetcher?: typeof fetch;
-    timeoutMs?: number;
   } = {},
 ): Promise<Artwork[]> {
   const queue = objectIds.map((objectId, index) => ({ objectId, index }));

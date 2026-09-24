@@ -1,6 +1,23 @@
+import { MetApiError, type MetApiErrorKind } from "./client.server";
 import { SEARCH_PAGE_SIZE } from "./search-query";
 
 export type CollectionSearchStatus = "empty" | "partial" | "success";
+
+/**
+ * The upstream-failure taxonomy a loader can hand to the UI:
+ * "timeout"/"5xx" mean the Met is down or unreachable (transient),
+ * "4xx" means the request itself was rejected, "parse" means the
+ * upstream answered with something unreadable. Distinct from the
+ * "empty" outcome above — an honest zero-result index — so the UI can
+ * tell "Met down" apart from "no results".
+ */
+export type SearchFailureKind = MetApiErrorKind;
+
+export function searchFailureKind(
+  error: unknown,
+): SearchFailureKind | undefined {
+  return error instanceof MetApiError ? error.kind : undefined;
+}
 
 /**
  * The single definition of a live search's outcome.

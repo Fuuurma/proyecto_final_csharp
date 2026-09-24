@@ -57,6 +57,7 @@ vi.mock("./client.server", async (importOriginal) => {
 });
 
 import { metDepartments } from "@/data/departments";
+import { MetApiError } from "./client.server";
 import {
   getArtwork,
   listDepartments,
@@ -111,6 +112,14 @@ describe("getArtwork", () => {
     expect(failed).toMatchObject({
       message: expect.stringContaining("Met object record"),
     });
+  });
+
+  it("propagates the typed failure kind from the live client", async () => {
+    setFixtureMode(false);
+    fetchMetObject.mockRejectedValueOnce(new MetApiError("timeout", "slow"));
+    const result = await getArtwork({ data: { objectId: 12345 } });
+    if (result.status !== "error") throw new Error("expected error result");
+    expect(result.failure).toBe("timeout");
   });
 });
 
@@ -293,5 +302,21 @@ describe("searchCollection", () => {
     });
     expect(result.status).toBe("error");
     expect(result.artworks).toEqual([]);
+  });
+
+  // fleet BE-meet-the-met-01: the loader must hand the UI a typed
+  // failure kind, not just prose — "5xx" is "Met down", distinct from
+  // an "empty" index ("no results").
+  it("an upstream outage carries the typed failure kind", async () => {
+    setFixtureMode(false);
+    fetchMetSearchIds.mockRejectedValueOnce(
+      new MetApiError("5xx", "upstream down", 503),
+    );
+
+    const result = await searchCollection({
+      data: { q: "not-a-real-object", department: "all", page: 1 },
+    });
+    expect(result.status).toBe("error");
+    expect(result.failure).toBe("5xx");
   });
 });
