@@ -20,8 +20,15 @@ export function ArtworkCard({ artwork }: ArtworkCardProps) {
       <div className="artwork-card__meta">
         <div className="artwork-card__meta-main">
           <div className="artwork-card__line">
-            <span>{artwork.date ?? "Date unknown"}</span>
-            <span>{artwork.department ?? "Department unknown"}</span>
+            {/* The line's CSS ellipsizes these spans at 9px — the title
+                attribute keeps the full value one hover away (the text
+                itself is already complete for screen readers). */}
+            <span title={artwork.date ?? "Date unknown"}>
+              {artwork.date ?? "Date unknown"}
+            </span>
+            <span title={artwork.department ?? "Department unknown"}>
+              {artwork.department ?? "Department unknown"}
+            </span>
           </div>
           <h3>
             <Link to="/art/$objectId" params={{ objectId: String(artwork.id) }}>
