@@ -374,7 +374,8 @@ img {
 }
 
 .hero__copy h1 em {
-  color: var(--red);
+  /* Italic serif alone carries the pull-quote — the red spent the
+     controlled accent on editorial emphasis (grok 09-25 23:45 P2). */
   font-style: italic;
   font-weight: 400;
 }
