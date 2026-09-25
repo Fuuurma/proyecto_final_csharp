@@ -48,6 +48,22 @@ describe("computeSearchStatus", () => {
     ).toBe("partial");
   });
 
+  it("zero usable on FULL hydration is empty, not partial (preFiltered or not)", () => {
+    // grok 09-26 P2 contract split: the server's early branch owns this
+    // cell (honest empty); computeSearchStatus must agree if ever asked.
+    for (const preFiltered of [true, false]) {
+      expect(
+        computeSearchStatus({
+          ...base,
+          totalIds: 500,
+          usableCount: 0,
+          hydratedCount: base.pageIdCount + 12,
+          preFiltered,
+        }),
+      ).toBe("empty");
+    }
+  });
+
   it("sieve drops are partial on pre-filtered /search, success on /objects", () => {
     const allFetched = { ...base, totalIds: 500 };
     expect(

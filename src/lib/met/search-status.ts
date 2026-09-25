@@ -39,6 +39,13 @@ export function computeSearchStatus(input: {
   preFiltered: boolean;
 }): CollectionSearchStatus {
   if (input.totalIds === 0) return "empty";
+  // Zero usable after FULL hydration is the honest empty (the server's
+  // early branch owns that cell). This clause must agree with it: the
+  // preFiltered-partial gate is for hydration shortfalls and PARTIAL
+  // sieve drops, not for a fully-checked zero (grok 09-26 P2 split).
+  if (input.usableCount === 0 && input.hydratedCount >= input.pageIdCount) {
+    return "empty";
+  }
   if (
     input.hydratedCount < input.pageIdCount ||
     (input.preFiltered &&
