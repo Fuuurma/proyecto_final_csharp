@@ -155,6 +155,9 @@ function ArtworkDetail() {
       ].filter((source): source is string => Boolean(source)),
     ),
   ];
+  // grok 23:45 #3: "Open image" must target the view the user has
+  // tabbed into, not always the primary image.
+  const [openImageSrc, setOpenImageSrc] = useState<string | undefined>(undefined);
 
   return (
     <main className="detail-page">
@@ -200,6 +203,7 @@ function ArtworkDetail() {
             key={objectId}
             artwork={artwork}
             imageSources={imageSources}
+            onActiveSrcChange={setOpenImageSrc}
           />
           <div className="detail-image-footer">
             <p className="image-credit">
@@ -207,7 +211,12 @@ function ArtworkDetail() {
             </p>
             {artwork.primaryImage || artwork.primaryImageSmall ? (
               <a
-                href={artwork.primaryImage ?? artwork.primaryImageSmall ?? "#"}
+                href={
+                  openImageSrc ??
+                  artwork.primaryImage ??
+                  artwork.primaryImageSmall ??
+                  "#"
+                }
                 target="_blank"
                 rel="noreferrer"
                 className="link-action link-action--quiet"
@@ -437,12 +446,18 @@ function ArtworkDetailPending() {
 function ArtworkStage({
   artwork,
   imageSources,
+  onActiveSrcChange,
 }: {
   artwork: Artwork;
   imageSources: string[];
+  onActiveSrcChange?: (src: string) => void;
 }) {
-  const [activeSrc, setActiveSrc] = useState(imageSources[0] ?? null);
+  const [activeSrc, setActiveSrcState] = useState(imageSources[0] ?? null);
   const [isOpen, setIsOpen] = useState(false);
+  const setActiveSrc = (src: string) => {
+    setActiveSrcState(src);
+    onActiveSrcChange?.(src);
+  };
 
   return (
     <>
