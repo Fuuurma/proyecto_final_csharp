@@ -349,6 +349,14 @@ export async function fetchMetDepartments(
  * real paging session (page size 24), small against a 128MB isolate. */
 export const MAX_CACHED_SEARCH_IDS = 20_000;
 
+// needs-work 09-26 P2: over-bound listings skip the value cache (isolate
+// memory), but that left whole-department browses and bare q=* searches
+// with no stale tier during upstream outages — they took the hard error
+// while small searches degraded. One oversized slot (most recent wins,
+// bounded: a single entry cannot burst the isolate) retains the latest
+// over-bound listing purely for stale-on-error service.
+let oversizedStale: { key: string; value: MetSearchIds } | null = null;
+
 export type MetSearchIds = {
   total: number;
   objectIds: number[];
@@ -450,6 +458,12 @@ export async function fetchMetSearchIds(
         (error.kind === "timeout" || error.kind === "5xx")
       )
         return stale;
+      if (
+        oversizedStale?.key === cacheKey &&
+        error instanceof MetApiError &&
+        (error.kind === "timeout" || error.kind === "5xx")
+      )
+        return oversizedStale.value;
       throw error;
     }
 
@@ -463,6 +477,8 @@ export async function fetchMetSearchIds(
     if (loaded.objectIds.length <= MAX_CACHED_SEARCH_IDS) {
       setCached(cacheKey, loaded, CACHE_TTL_MS.search);
       await setEdgeCached(cacheKey, loaded, EDGE_TTL_S.search);
+    } else {
+      oversizedStale = { key: cacheKey, value: loaded };
     }
     return loaded;
   });

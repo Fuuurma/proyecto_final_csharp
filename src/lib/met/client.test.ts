@@ -334,6 +334,9 @@ describe("Met API circuit breaker", () => {
 describe("fetchMetSearchIds cache value bound", () => {
   afterEach(() => {
     clearMetCache();
+    // the stale-tier test trips timeouts — without this reset the open
+    // breaker fail-fasts every later test in the file
+    resetMetCircuitBreaker();
     vi.unstubAllGlobals();
   });
 
@@ -372,7 +375,36 @@ describe("fetchMetSearchIds cache value bound", () => {
     expect(calls()).toBe(2);
   });
 
-  it("serving uncached oversize listings still returns them whole", async () => {
+  // needs-work 09-26 P2: over-bound listings skipped the cache entirely,
+  // so whole-department browses took the hard error during upstream
+  // timeouts while small searches degraded to stale. One oversized
+  // stale slot (most recent wins) now serves them on timeout/5xx.
+  it("serves the oversized stale tier on timeout after one success", async () => {
+    const ids = Array.from(
+      { length: MAX_CACHED_SEARCH_IDS + 1 },
+      (_, i) => i + 1,
+    );
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return response({ total: ids.length, objectIDs: ids });
+      }
+      throw new DOMException("aborted", "AbortError");
+    };
+    vi.stubGlobal("fetch", fetcher);
+
+    const first = await fetchMetSearchIds("bound-over-stale");
+    const second = await fetchMetSearchIds("bound-over-stale");
+
+    // the second request retries internally (3 attempts) before the
+    // stale tier serves — the exact attempt count is an implementation
+    // detail; what matters is it stopped hitting upstream and degraded
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(second.objectIds).toEqual(first.objectIds);
+  });
+
+    it("serving uncached oversize listings still returns them whole", async () => {
     const ids = Array.from(
       { length: MAX_CACHED_SEARCH_IDS + 1 },
       (_, i) => i + 1,
