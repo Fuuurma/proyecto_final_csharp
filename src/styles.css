@@ -12,6 +12,12 @@
   --rule: #cfccc3;
   --red: #b3322f;
   --red-deep: #862725;
+  /* Focus rings are keyboard affordances, not accent moments — ink on
+     paper, white inside the dark image field (grok 23:45 #5: the red
+     ring burned the accent's scarcity and sat at 2.9:1 on
+     --image-field). */
+  --focus-ring: var(--ink);
+  --focus-ring-on-dark: var(--white);
   --image-field: #171815;
   --white: #fffefa;
   --serif: "Newsreader Variable", "Newsreader", Georgia, serif;
@@ -156,7 +162,7 @@ textarea:focus-visible,
 [data-slot="dialog-trigger"]:focus-visible,
 [data-slot="alert-dialog-trigger"]:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--red);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 4px;
   box-shadow: none;
 }
@@ -918,7 +924,7 @@ img {
 }
 
 .department-filter-input:focus-visible {
-  outline: 2px solid var(--red);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 4px;
 }
 
@@ -1384,7 +1390,7 @@ img {
 
 .search-form:focus-within {
   border-color: var(--red);
-  outline: 2px solid var(--red);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 4px;
 }
 
@@ -1931,6 +1937,9 @@ img {
   min-height: 36rem;
   padding: clamp(1.25rem, 3.5vw, 3rem);
   background: var(--image-field);
+  /* focusable chrome inside the dark field (tab close, dialog
+     triggers) reads the on-dark ring */
+  --focus-ring: var(--focus-ring-on-dark);
 }
 
 .detail-image-trigger {

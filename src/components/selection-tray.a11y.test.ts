@@ -70,3 +70,26 @@ describe("selection-tray collapsed contract", () => {
     expect(strongRule?.[0]).not.toContain("display");
   });
 });
+
+// grok 23:45 #5: the global focus ring painted the controlled red
+// accent on every focusable — accent scarcity lost, 2.9:1 on the dark
+// image field. Rings read tokens now: ink on paper, white on dark.
+describe("focus-ring token contract", () => {
+  it("rings use the focus token, never the accent", () => {
+    const focusIdx = stylesSource.indexOf("[tabindex]:focus-visible {");
+    const rule = stylesSource.slice(
+      focusIdx,
+      stylesSource.indexOf("}", focusIdx),
+    );
+    expect(rule).toContain("outline: 2px solid var(--focus-ring)");
+    expect(rule).not.toContain("var(--red)");
+    expect(stylesSource).toContain("--focus-ring: var(--ink)");
+    expect(stylesSource).toContain("--focus-ring-on-dark: var(--white)");
+  });
+
+  it("the dark image field opts into the on-dark ring", () => {
+    const idx = stylesSource.indexOf(".detail-image-field {");
+    const rule = stylesSource.slice(idx, stylesSource.indexOf("}", idx));
+    expect(rule).toContain("--focus-ring: var(--focus-ring-on-dark)");
+  });
+});
