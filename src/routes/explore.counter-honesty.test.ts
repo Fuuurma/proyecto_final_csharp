@@ -50,3 +50,22 @@ describe("explore tail-fill error contract", () => {
     expect(callback).toContain("throw");
   });
 });
+
+// needs-work 09-26 P2: resolvedDepartmentId prefers departmentId, but
+// liveDepartmentName preferred the raw department name — a crafted or
+// stale URL (?department=Asian%20Art&departmentId=9) labeled the grid
+// "Asian Art" while querying Drawings-and-Prints. The label must use
+// the same precedence as the query.
+describe("explore department label precedence", () => {
+  it("derives the live label from departmentId first, like the query", () => {
+    const start = exploreSource.indexOf("const liveDepartmentName");
+    expect(start).toBeGreaterThan(-1);
+    const block = exploreSource.slice(start, start + 320);
+    const idBranch = block.indexOf("departmentId !== undefined");
+    const nameBranch = block.indexOf('activeDepartment !== "all"');
+    expect(idBranch).toBeGreaterThan(-1);
+    expect(nameBranch).toBeGreaterThan(-1);
+    expect(idBranch).toBeLessThan(nameBranch);
+    expect(block).toContain("departmentNameById(departmentId)");
+  });
+});

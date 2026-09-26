@@ -130,11 +130,15 @@ function Explore() {
     department: activeDepartment,
     departmentId,
   });
+  // The label must follow the query's precedence (resolvedDepartmentId
+  // prefers departmentId): a URL carrying both a name and an id used to
+  // label the grid with the name while querying the id — a label-vs-
+  // grid lie (needs-work 09-26 P2).
   const liveDepartmentName =
-    activeDepartment !== "all"
-      ? activeDepartment
-      : departmentId !== undefined
-        ? (departmentNameById(departmentId) ?? result.department)
+    departmentId !== undefined
+      ? (departmentNameById(departmentId) ?? result.department)
+      : activeDepartment !== "all"
+        ? activeDepartment
         : undefined;
   const [extra, setExtra] = useState<Artwork[]>([]);
   const [isFilling, setIsFilling] = useState(false);
