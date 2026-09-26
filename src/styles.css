@@ -2566,7 +2566,9 @@ body:has(.selection-tray.is-collapsed) {
   border: 1px solid var(--ink);
   border-radius: 0;
   background: var(--paper);
-  box-shadow: 0.75rem 0.75rem 0 var(--red);
+  /* paper-deep depth echo — the accent is for active/selection, not
+     decoration around a confirm (grok 23:45 #7) */
+  box-shadow: 0.75rem 0.75rem 0 var(--ink);
 }
 
 [data-slot="alert-dialog-title"] {

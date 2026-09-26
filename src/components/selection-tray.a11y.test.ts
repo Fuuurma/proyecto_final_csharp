@@ -93,3 +93,15 @@ describe("focus-ring token contract", () => {
     expect(rule).toContain("--focus-ring: var(--focus-ring-on-dark)");
   });
 });
+
+// grok 23:45 #7: the clear-selection confirm wore the controlled red
+// accent as a hard block shadow — accent-as-decoration. The chrome
+// echoes paper-deep depth with ink instead.
+describe("alert-dialog accent contract", () => {
+  it("keeps the accent out of the confirm chrome shadow", () => {
+    const idx = stylesSource.indexOf('[data-slot="alert-dialog-content"]');
+    const rule = stylesSource.slice(idx, stylesSource.indexOf("}", idx));
+    expect(rule).toContain("0.75rem 0.75rem 0 var(--ink)");
+    expect(rule).not.toContain("var(--red)");
+  });
+});
