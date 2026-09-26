@@ -24,3 +24,20 @@ describe("open-image footer contract", () => {
     expect(src).toContain("const setActiveSrc = (src: string) => {");
   });
 });
+
+// grok 23:45 #4: the tablist declared role="tab" but supported pointer
+// clicks only — arrows/Home/End were dead, collapsing non-pointer users
+// to the primary image. The roster is now one tab stop with roving
+// selection and a labelled tabpanel.
+describe("artwork-views tablist keyboard contract", () => {
+  it("wires roving tabindex, arrow movement, and a labelled panel", () => {
+    expect(src).toContain('onKeyDown={(event) => {');
+    expect(src).toContain('event.key === "ArrowRight"');
+    expect(src).toContain('event.key === "Home"');
+    expect(src).toContain("tabIndex={selected ? 0 : -1}");
+    expect(src).toContain('id={`view-tab-${index}`}');
+    expect(src).toContain('aria-controls="artwork-stage-panel"');
+    expect(src).toContain('id="artwork-stage-panel"');
+    expect(src).toContain('role="tabpanel"');
+  });
+});

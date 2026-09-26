@@ -462,7 +462,12 @@ function ArtworkStage({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <div className="detail-image-field">
+        <div
+          id="artwork-stage-panel"
+          role="tabpanel"
+          aria-label="Selected object view"
+          className="detail-image-field"
+        >
           {activeSrc ? (
             <DialogTrigger
               render={
@@ -529,15 +534,46 @@ function ArtworkStage({
       </Dialog>
 
       {imageSources.length > 1 ? (
-        <div className="artwork-views" role="tablist" aria-label="Object views">
+        <div
+          className="artwork-views"
+          role="tablist"
+          aria-label="Object views"
+          onKeyDown={(event) => {
+            // WAI-ARIA tabs: the roster is a single tab stop with
+            // roving focus; arrows/Home/End move selection (grok
+            // 23:45 #4 — pointer-only tabs collapsed non-pointer
+            // users to the primary image).
+            const current = imageSources.indexOf(activeSrc);
+            let next: number | null = null;
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+              next = (current + 1) % imageSources.length;
+            } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+              next = (current - 1 + imageSources.length) % imageSources.length;
+            } else if (event.key === "Home") {
+              next = 0;
+            } else if (event.key === "End") {
+              next = imageSources.length - 1;
+            }
+            if (next !== null) {
+              event.preventDefault();
+              setActiveSrc(imageSources[next]);
+              document
+                .getElementById(`view-tab-${next}`)
+                ?.focus();
+            }
+          }}
+        >
           {imageSources.map((source, index) => {
             const selected = source === activeSrc;
             return (
               <button
                 key={source}
+                id={`view-tab-${index}`}
                 type="button"
                 role="tab"
                 aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                aria-controls="artwork-stage-panel"
                 aria-label={
                   index === 0 ? "Primary image" : `Additional view ${index}`
                 }
