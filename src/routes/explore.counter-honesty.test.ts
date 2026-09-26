@@ -32,3 +32,21 @@ describe("explore counter honesty", () => {
     expect(exploreSource).toContain("No further open-access works surfaced");
   });
 });
+
+// needs-work 09-25 P1: the tail-fill callback returned next.artworks
+// unconditionally — but the server RESOLVES {status:"error",
+// artworks:[]} when the curated fallback is empty (the normal shape for
+// page >= 2). collectPages then cached the failed page as a legitimate
+// empty, the zero-yield counter could blame the index, and the honest
+// fillFailed handler stayed unreachable.
+describe("explore tail-fill error contract", () => {
+  it("gates the fill callback on the resolved status before returning artworks", () => {
+    const start = exploreSource.indexOf("async (nextPage) => {");
+    const end = exploreSource.indexOf("return next.artworks", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const callback = exploreSource.slice(start, end);
+    expect(callback).toContain('next.status === "error"');
+    expect(callback).toContain("throw");
+  });
+});

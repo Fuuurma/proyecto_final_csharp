@@ -243,6 +243,16 @@ function Explore() {
                 page: nextPage,
               },
             });
+            // The server RESOLVES {status: "error", artworks: []} when
+            // the curated fallback is empty — the normal shape for any
+            // page >= 2. Returning the empty array would let
+            // collectPages cache the failed page as a legitimate empty
+            // and let the zero-yield counter blame the index; throwing
+            // routes to the honest fillFailed handler and leaves the
+            // page uncached (needs-work 09-25 P1).
+            if (next.status === "error") {
+              throw new Error(next.message ?? "Met collection search");
+            }
             return next.artworks;
           },
           {
