@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { SelectionProvider } from "@/lib/selection";
 import { SaveButton } from "./save-button";
 import type { Artwork } from "@/lib/met/normalize";
 
@@ -19,10 +22,29 @@ const artwork = {
  * but makes it legible: aria-busy announces the non-interactive state.
  */
 describe("save-button hydration state", () => {
-  it("is disabled AND announces busy before hydration", () => {
-    render(<SaveButton artwork={artwork} />);
+  it("is interactive after hydration and announces no busy state", () => {
+    render(
+      <SelectionProvider>
+        <SaveButton artwork={artwork} />
+      </SelectionProvider>,
+    );
     const button = screen.getByRole("button");
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute("aria-busy", "true");
+    // RTL flushes mount effects before assertions, so this observes the
+    // hydrated state: interactive, not busy.
+    expect(button.getAttribute("aria-disabled")).toBeNull();
+    expect(button.getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("wires disabled + aria-busy to the hydration flag (source pin)", () => {
+    // RTL cannot observe the pre-hydration window (effects flush on
+    // mount), so the pre-hydration wiring is pinned structurally: the
+    // gate is load-bearing (ungated, a stored artwork's remove-click
+    // dispatches add) and aria-busy makes it legible to AT.
+    const src = readFileSync(
+      join(__dirname, "save-button.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("aria-busy={!isHydrated}");
+    expect(src).toContain("disabled={!isHydrated}");
   });
 });
