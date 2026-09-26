@@ -39,6 +39,12 @@ export function resetMetCircuitBreaker(): void {
 
 async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
   const now = Date.now();
+  // needs-work 09-26 P3 (latent race): only the call that enters as the
+  // probe may clear the flag — a non-probe call finishing inside the
+  // probe's load window used to clear it early and admit a second
+  // probe. Latent today (timeoutMs 3s << CIRCUIT_OPEN_MS 30s); the
+  // local token makes it impossible.
+  const isProbe = circuitOpenedAt !== undefined;
   if (circuitOpenedAt !== undefined) {
     if (now - circuitOpenedAt < CIRCUIT_OPEN_MS || probeInFlight) {
       // An open circuit must fail fast — never queued for a retry.
@@ -69,7 +75,7 @@ async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
     }
     throw error;
   } finally {
-    probeInFlight = false;
+    if (isProbe) probeInFlight = false;
   }
 }
 

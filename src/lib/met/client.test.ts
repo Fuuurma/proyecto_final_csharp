@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearMetCache, getCached, setCached } from "./cache";
 import {
@@ -467,5 +469,25 @@ describe("upstream edge cache", () => {
 
     expect(calls).toBe(1);
     expect(again.id).toBe(7);
+  });
+});
+
+// needs-work 09-26 P3 (latent): the probe flag was cleared by EVERY
+// wrapped call's finally, not only the probe's — a non-probe call
+// finishing inside a probe's load window would let a second probe
+// through. The finally must be gated on the call actually probing.
+describe("circuit probe flag ownership", () => {
+  it("gates the probeInFlight clear on the probing call", () => {
+    const src = readFileSync(
+      join(__dirname, "client.server.ts"),
+      "utf8",
+    );
+    const fn = src.slice(
+      src.indexOf("async function withMetCircuit"),
+      src.indexOf("// Upstream failure taxonomy"),
+    );
+    expect(fn).toContain("const isProbe = circuitOpenedAt !== undefined;");
+    expect(fn).toContain("if (isProbe) probeInFlight = false;");
+    expect(fn).not.toContain("    probeInFlight = false;");
   });
 });
