@@ -2452,7 +2452,14 @@ body:has(.selection-tray.is-collapsed) {
   transform: rotate(-90deg);
 }
 
-.selection-tray.is-collapsed .selection-tray__thumbs,
+.selection-tray.is-collapsed .selection-tray__thumbs {
+  /* Collapsed means collapsed: the thumbs row is what holds the tray
+     tall, and the 3.5rem body clearance assumes the shrink actually
+     happens (grok 09-26 23:45 #1; the 09-17 clearance fix assumed it
+     too). The count strong stays visible below. */
+  display: none;
+}
+
 .selection-tray.is-collapsed .selection-tray__copy strong {
   /* Keep the count visible when collapsed — hiding it left the tray
      with only a chevron and no indication anything is saved (grok

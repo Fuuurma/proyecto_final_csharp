@@ -42,3 +42,31 @@ describe("selection tray thumb states", () => {
     expect(traySource).not.toMatch(/return null;\s*\}\)\(\)/);
   });
 });
+
+// needs-work/grok 09-26 23:45 #1: the collapsed rule only shrank
+// font-size — the thumbs stayed rendered, so the tray never actually
+// shrank and the 3.5rem body clearance (8da551b) covered footer
+// content. Collapsed must hide the thumbs while the count stays
+// visible (grok 09-11 12:45 #5).
+const stylesSource = readFileSync(
+  join(here, "..", "styles.css"),
+  "utf8",
+);
+
+describe("selection-tray collapsed contract", () => {
+  it("hides the thumbs when collapsed and keeps the count visible", () => {
+    const thumbsRule = stylesSource.match(
+      /\.selection-tray\.is-collapsed \.selection-tray__thumbs \{[^}]*\}/,
+    );
+    expect(thumbsRule, "dedicated thumbs rule").not.toBeNull();
+    expect(thumbsRule?.[0]).toContain("display: none");
+
+    // the count strong keeps its shrink in its own rule
+    const strongRule = stylesSource.match(
+      /\.selection-tray\.is-collapsed \.selection-tray__copy strong \{[^}]*\}/,
+    );
+    expect(strongRule, "dedicated strong rule").not.toBeNull();
+    expect(strongRule?.[0]).toContain("font-size: 0.8rem");
+    expect(strongRule?.[0]).not.toContain("display");
+  });
+});
