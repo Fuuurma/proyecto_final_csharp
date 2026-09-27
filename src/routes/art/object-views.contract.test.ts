@@ -15,7 +15,7 @@ describe("open-image footer contract", () => {
     expect(src).toMatch(/openImageSrc \?\?\s*\n?\s*artwork\.primaryImage/);
     // the raw-primary-only href is gone
     expect(src).not.toContain(
-      "href={artwork.primaryImage ?? artwork.primaryImageSmall ?? \"#\"}",
+      'href={artwork.primaryImage ?? artwork.primaryImageSmall ?? "#"}',
     );
   });
 
@@ -31,11 +31,11 @@ describe("open-image footer contract", () => {
 // selection and a labelled tabpanel.
 describe("artwork-views tablist keyboard contract", () => {
   it("wires roving tabindex, arrow movement, and a labelled panel", () => {
-    expect(src).toContain('onKeyDown={(event) => {');
+    expect(src).toContain("onKeyDown={(event) => {");
     expect(src).toContain('event.key === "ArrowRight"');
     expect(src).toContain('event.key === "Home"');
     expect(src).toContain("tabIndex={selected ? 0 : -1}");
-    expect(src).toContain('id={`view-tab-${index}`}');
+    expect(src).toContain("id={`view-tab-${index}`}");
     expect(src).toContain('aria-controls="artwork-stage-panel"');
     expect(src).toContain('id="artwork-stage-panel"');
     expect(src).toContain('role="tabpanel"');

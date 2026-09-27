@@ -406,7 +406,7 @@ describe("fetchMetSearchIds cache value bound", () => {
     expect(second.objectIds).toEqual(first.objectIds);
   });
 
-    it("serving uncached oversize listings still returns them whole", async () => {
+  it("serving uncached oversize listings still returns them whole", async () => {
     const ids = Array.from(
       { length: MAX_CACHED_SEARCH_IDS + 1 },
       (_, i) => i + 1,
@@ -478,10 +478,7 @@ describe("upstream edge cache", () => {
 // through. The finally must be gated on the call actually probing.
 describe("circuit probe flag ownership", () => {
   it("gates the probeInFlight clear on the probing call", () => {
-    const src = readFileSync(
-      join(__dirname, "client.server.ts"),
-      "utf8",
-    );
+    const src = readFileSync(join(__dirname, "client.server.ts"), "utf8");
     const fn = src.slice(
       src.indexOf("async function withMetCircuit"),
       src.indexOf("// Upstream failure taxonomy"),

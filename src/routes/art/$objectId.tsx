@@ -559,9 +559,7 @@ function ArtworkStage({
             if (next !== null) {
               event.preventDefault();
               setActiveSrc(imageSources[next]);
-              document
-                .getElementById(`view-tab-${next}`)
-                ?.focus();
+              document.getElementById(`view-tab-${next}`)?.focus();
             }
           }}
         >

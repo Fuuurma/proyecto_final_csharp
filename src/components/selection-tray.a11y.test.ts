@@ -48,10 +48,7 @@ describe("selection tray thumb states", () => {
 // shrank and the 3.5rem body clearance (8da551b) covered footer
 // content. Collapsed must hide the thumbs while the count stays
 // visible (grok 09-11 12:45 #5).
-const stylesSource = readFileSync(
-  join(here, "..", "styles.css"),
-  "utf8",
-);
+const stylesSource = readFileSync(join(here, "..", "styles.css"), "utf8");
 
 describe("selection-tray collapsed contract", () => {
   it("hides the thumbs when collapsed and keeps the count visible", () => {

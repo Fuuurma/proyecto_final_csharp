@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import type { Artwork } from "@/lib/met/normalize";
 import { SelectionProvider } from "@/lib/selection";
 import { SaveButton } from "./save-button";
-import type { Artwork } from "@/lib/met/normalize";
 
 const artwork = {
   id: 1,
@@ -40,10 +40,7 @@ describe("save-button hydration state", () => {
     // mount), so the pre-hydration wiring is pinned structurally: the
     // gate is load-bearing (ungated, a stored artwork's remove-click
     // dispatches add) and aria-busy makes it legible to AT.
-    const src = readFileSync(
-      join(__dirname, "save-button.tsx"),
-      "utf8",
-    );
+    const src = readFileSync(join(__dirname, "save-button.tsx"), "utf8");
     expect(src).toContain("aria-busy={!isHydrated}");
     expect(src).toContain("disabled={!isHydrated}");
   });
