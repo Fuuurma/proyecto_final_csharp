@@ -93,6 +93,12 @@ function ArtworkDetail() {
   const result = Route.useLoaderData();
   const { objectId } = Route.useParams();
   const navigate = useNavigate();
+  // grok 23:45 #3: "Open image" must target the view the user has
+  // tabbed into, not always the primary image. (Hooks live above the
+  // early return — react-doctor rules-of-hooks, 09-27 re-sweep.)
+  const [openImageSrc, setOpenImageSrc] = useState<string | undefined>(
+    undefined,
+  );
 
   const artwork = result?.status === "success" ? result.artwork : null;
   const adjacent = artwork
@@ -155,10 +161,6 @@ function ArtworkDetail() {
       ].filter((source): source is string => Boolean(source)),
     ),
   ];
-  // grok 23:45 #3: "Open image" must target the view the user has
-  // tabbed into, not always the primary image.
-  const [openImageSrc, setOpenImageSrc] = useState<string | undefined>(undefined);
-
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
