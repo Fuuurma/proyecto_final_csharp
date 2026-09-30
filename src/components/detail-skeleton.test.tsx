@@ -14,10 +14,15 @@ describe("DetailSkeleton", () => {
     expect(image?.getAttribute("style")).toContain("0.75");
   });
 
-  it("falls back to the CSS default square when the ratio is unknown", () => {
+  it("drops the min-height floor when the ratio is known (real box is ratio-exact)", () => {
+    const { container } = render(<DetailSkeleton imageAspectRatio={1.55} />);
+    const image = container.querySelector(".detail-loading__image");
+    expect(image?.getAttribute("style")).toContain("--artwork-min-height");
+  });
+
+  it("keeps the min-height floor when the ratio is unknown", () => {
     const { container } = render(<DetailSkeleton />);
     const image = container.querySelector(".detail-loading__image");
-    expect(image).toBeTruthy();
     expect(image?.getAttribute("style")).toBeNull();
   });
 

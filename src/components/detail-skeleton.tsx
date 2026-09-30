@@ -8,8 +8,10 @@ import { Skeleton } from "@/components/ui/skeleton";
  * image placeholder takes the same `--artwork-ratio` box the real
  * `.artwork-image` uses, so content arrival doesn't shift the page
  * (grok 09-30: the skeleton hard-coded 1/1 while Met paintings are
- * mostly portrait — a guaranteed jump at load). Unknown ratios fall
- * back to the CSS default square.
+ * mostly portrait — a guaranteed jump at load). The real box has no
+ * min-height, so a known ratio also drops the skeleton's 38rem
+ * floor — otherwise landscape pieces collapsed upward on arrival.
+ * Unknown ratios fall back to the CSS default square + floor.
  */
 export function DetailSkeleton({
   imageAspectRatio,
@@ -17,7 +19,10 @@ export function DetailSkeleton({
   imageAspectRatio?: number;
 }) {
   const imageStyle = imageAspectRatio
-    ? ({ "--artwork-ratio": imageAspectRatio } as CSSProperties)
+    ? ({
+        "--artwork-ratio": imageAspectRatio,
+        "--artwork-min-height": "0rem",
+      } as CSSProperties)
     : undefined;
 
   return (

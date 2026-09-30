@@ -1840,7 +1840,10 @@ img {
 
 .detail-loading__image {
   width: 100%;
-  min-height: 38rem;
+  /* The floor only applies to unknown ratios — the real .artwork-image
+   * box is ratio-exact, so a known ratio must not reserve extra height
+   * (landscape pieces would collapse upward when the record lands). */
+  min-height: var(--artwork-min-height, 38rem);
   /* Matches .artwork-image's --artwork-ratio when the pending route
    * knows it; the square default is the unknown-ratio fallback. */
   aspect-ratio: var(--artwork-ratio, 1 / 1);
@@ -3197,7 +3200,7 @@ body:has(.selection-tray.is-collapsed) {
   }
 
   .detail-loading__image {
-    min-height: 20rem;
+    min-height: var(--artwork-min-height, 20rem);
   }
 
   .detail-loading__copy {
