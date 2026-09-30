@@ -7,6 +7,7 @@ import {
 import { type ReactNode, useEffect, useState } from "react";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
+import { DetailSkeleton } from "@/components/detail-skeleton";
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
@@ -27,7 +28,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { curatedArtworks } from "@/data/curated-artworks";
 import { isReviewDepartmentName } from "@/data/departments";
 import type { Artwork } from "@/lib/met/normalize";
@@ -412,35 +412,19 @@ function getAdjacentArtworks(artwork: Artwork): {
 }
 
 function ArtworkDetailPending() {
+  // Curated objects already know their image ratio (seed data), so
+  // the loading frame can reserve the real box and skip the layout
+  // jump when the record lands (grok 09-30 skeleton-ratio row).
+  const { objectId } = Route.useParams();
+  const curated = curatedArtworks.find(
+    (candidate) => candidate.id === Number(objectId),
+  );
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
         <span className="link-action">Reading object record…</span>
       </div>
-      <div className="detail-layout page-frame detail-loading" aria-busy="true">
-        <div>
-          <Skeleton className="detail-loading__image" />
-          <Skeleton className="detail-loading__credit" />
-        </div>
-        <div className="detail-loading__copy">
-          <Skeleton className="detail-loading__eyebrow" />
-          <Skeleton className="detail-loading__title" />
-          <Skeleton className="detail-loading__title detail-loading__title--short" />
-          <Skeleton className="detail-loading__artist" />
-          <div className="detail-loading__actions">
-            <Skeleton />
-            <Skeleton />
-          </div>
-          <div className="detail-loading__metadata">
-            {[1, 2, 3, 4, 5].map((row) => (
-              <Skeleton key={row} />
-            ))}
-          </div>
-        </div>
-        <p className="sr-only" role="status" aria-live="polite">
-          Bringing the record and its image into view.
-        </p>
-      </div>
+      <DetailSkeleton imageAspectRatio={curated?.imageAspectRatio} />
     </main>
   );
 }

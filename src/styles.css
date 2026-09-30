@@ -1841,7 +1841,9 @@ img {
 .detail-loading__image {
   width: 100%;
   min-height: 38rem;
-  aspect-ratio: 1 / 1;
+  /* Matches .artwork-image's --artwork-ratio when the pending route
+   * knows it; the square default is the unknown-ratio fallback. */
+  aspect-ratio: var(--artwork-ratio, 1 / 1);
 }
 
 .detail-loading__credit {
