@@ -257,7 +257,18 @@ export const searchCollection = createServerFn({ method: "GET" })
       // degrades honestly instead of claiming certainty
       // (needs-work 09-24 P2).
       if (artworks.length === 0) {
-        if (hydrated.length < pageIds.length) {
+        // Zero usable: computeSearchStatus is the single decision
+        // point (needs-work 10-01 P2 — the duplicated inline semantics
+        // could drift from it); this block only maps status -> the
+        // honest message and payload.
+        const zeroUsableStatus = computeSearchStatus({
+          totalIds: search.objectIds.length,
+          hydratedCount: hydrated.length,
+          pageIdCount: pageIds.length,
+          usableCount: 0,
+          preFiltered: search.preFiltered,
+        });
+        if (zeroUsableStatus === "partial") {
           return {
             status: "partial",
             source: "met",
