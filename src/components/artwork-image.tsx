@@ -34,12 +34,11 @@ export function ArtworkImage({
     key: string;
     failedSources: string[];
   }>({ key: sourceKey, failedSources: [] });
-  const failedSources =
-    imageState.key === sourceKey ? imageState.failedSources : [];
-
-  const source = sources.find(
-    (candidate) => !failedSources.includes(candidate),
+  const failedSources = new Set(
+    imageState.key === sourceKey ? imageState.failedSources : [],
   );
+
+  const source = sources.find((candidate) => !failedSources.has(candidate));
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
