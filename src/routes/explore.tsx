@@ -580,6 +580,32 @@ function Explore() {
             </p>
           ) : null}
         </>
+      ) : result.status === "partial" ? (
+        // A partial result with zero usable works is a DEGRADATION, not
+        // an empty index — the old branch claimed "The index is quiet
+        // here." while the alert above said the page couldn't be fully
+        // checked (grok 10-02: contradictory + double-printed).
+        <section aria-live="polite">
+          <Empty>
+            <EmptyHeader>
+              <span className="eyebrow">Collection unavailable</span>
+              <EmptyTitle>This page couldn't be fully checked.</EmptyTitle>
+              <EmptyDescription>
+                {result.message ??
+                  "The live Met collection is answering slowly."}
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Link
+                to="/explore"
+                search={{}}
+                className={cn(buttonVariants({ size: "lg" }), "button-link")}
+              >
+                Return to the review set
+              </Link>
+            </EmptyContent>
+          </Empty>
+        </section>
       ) : (
         <section aria-live="polite">
           <Empty>
