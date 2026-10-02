@@ -4,7 +4,7 @@ import {
   notFound,
   useNavigate,
 } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
 import { DetailSkeleton } from "@/components/detail-skeleton";
@@ -30,6 +30,10 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { curatedArtworks } from "@/data/curated-artworks";
 import { isReviewDepartmentName } from "@/data/departments";
+import {
+  adjacentInSequence,
+  type SequenceNeighbors,
+} from "@/lib/browse-sequence";
 import type { Artwork } from "@/lib/met/normalize";
 import {
   type ArtworkDetailResult,
@@ -41,6 +45,12 @@ import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/art/$objectId")({
+  // `seq` names the session-stored browse sequence the visitor was paging
+  // through on Explore — Previous/Next resolve inside it (devin 09-09
+  // 06:17 P1).
+  validateSearch: (search: Record<string, unknown>): { seq?: string } => ({
+    seq: typeof search.seq === "string" ? search.seq : undefined,
+  }),
   // Loader before head — tanstack-start-route-property-order
   // (react-doctor 09-16): data properties first keep head's
   // loaderData inference anchored.
@@ -89,9 +99,18 @@ export const Route = createFileRoute("/art/$objectId")({
   component: ArtworkDetail,
 });
 
+/** The honest no-trail state: no neighbors, no position to claim. */
+const EMPTY_ADJACENT = {
+  previous: null,
+  next: null,
+  position: 0,
+  total: 0,
+};
+
 function ArtworkDetail() {
   const result = Route.useLoaderData();
   const { objectId } = Route.useParams();
+  const { seq } = Route.useSearch();
   const navigate = useNavigate();
   // grok 23:45 #3: "Open image" must target the view the user has
   // tabbed into, not always the primary image. (Hooks live above the
@@ -101,9 +120,34 @@ function ArtworkDetail() {
   );
 
   const artwork = result?.status === "success" ? result.artwork : null;
+
+  // The browsed sequence is client-only (sessionStorage). SSR and the
+  // hydration pass must render the curated fallback or hydration
+  // diverges — so the isClient gate holds until mount, then neighbors
+  // resolve synchronously during render. Client-side prev/next therefore
+  // never paints one frame of the previous object's neighbors before the
+  // effect could catch up (devin 09-09 06:17 P1; review 09-19 P2).
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => setIsClient(true), []);
+  const sequence = useMemo<SequenceNeighbors | null>(
+    () =>
+      isClient && seq && artwork ? adjacentInSequence(seq, artwork.id) : null,
+    [isClient, seq, artwork],
+  );
+
   const adjacent = artwork
-    ? getAdjacentArtworks(artwork)
-    : { previous: null, next: null, position: 0, total: 0 };
+    ? seq
+      ? // A `?seq=` link claims a browsed trail. Before isClient the
+        // store is unreadable, so the nav holds empty — no curated
+        // flash on first paint (review 09-19 P2). And when the lookup
+        // resolves to nothing — evicted, expired with the tab, or
+        // displaced by a colliding identity whose sig no longer
+        // matches — the curated set must not pose as that trail with a
+        // confident `N / 45`; the honest render is the empty nav
+        // (review 09-19 18:17 P2).
+        (sequence ?? EMPTY_ADJACENT)
+      : getAdjacentArtworks(artwork)
+    : EMPTY_ADJACENT;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -127,6 +171,10 @@ function ArtworkDetail() {
           from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.previous.id) },
+          // Conditional like ArtworkCard's — an unconditional
+          // `seq: undefined` risks serializing an empty param (review
+          // 09-19 P3).
+          search: seq ? { seq } : {},
         });
       } else if (event.key === "ArrowRight" && adjacent.next) {
         event.preventDefault();
@@ -134,13 +182,14 @@ function ArtworkDetail() {
           from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.next.id) },
+          search: seq ? { seq } : {},
         });
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [adjacent.previous, adjacent.next, navigate]);
+  }, [adjacent.previous, adjacent.next, navigate, seq]);
 
   if (!result || result.status === "error" || !artwork) {
     const message =
@@ -336,6 +385,7 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.previous.id) }}
+              search={seq ? { seq } : {}}
               className="detail-sequence__link"
             >
               <ArtworkImage artwork={adjacent.previous} />
@@ -354,6 +404,7 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.next.id) }}
+              search={seq ? { seq } : {}}
               className="detail-sequence__link detail-sequence__link--next"
             >
               <ArtworkImage artwork={adjacent.next} />

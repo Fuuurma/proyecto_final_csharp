@@ -32,6 +32,16 @@ type SelectionContextValue = {
   items: SelectionItem[];
   isHydrated: boolean;
   announcement: string;
+  /**
+   * Why a save cannot persist, or null when writes land normally.
+   * "unsupported-version": a newer build's envelope owns the storage
+   * key — writes are refused so the foreign payload survives.
+   * "unavailable": the store itself refuses (private mode, quota, a
+   * throwing accessor) — saves die the same silent death, so it must
+   * be disclosed distinctly, not coerced to unblocked (review 09-19
+   * P1; review 09-19 18:17 P2).
+   */
+  persistenceBlocked: "unsupported-version" | "unavailable" | null;
   has: (objectId: number) => boolean;
   toggle: (artwork: Artwork) => void;
   remove: (objectId: number) => void;
@@ -226,35 +236,54 @@ function localStorageOrNull(): SelectionStorage | null {
   }
 }
 
-export function readSelection(storage: SelectionStorage): SelectionItem[] {
+/**
+ * Guarded read that keeps the parse result — the mount effect needs the
+ * version status to flag a foreign envelope, which readSelection's
+ * items-only return would erase. getItem itself can throw (blocked
+ * cookies, SecurityError) even after the accessor succeeded, so the
+ * guard lives at this level and both callers share it (review 09-19 P1).
+ */
+function readStoredSelection(storage: SelectionStorage): ParsedStoredSelection {
   try {
-    const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
-    // A newer build's envelope hydrates nothing here but stays on disk
-    // for the version that can read it.
-    return stored.status === "ok" ? stored.items : [];
+    return parseStoredSelection(storage.getItem(STORAGE_KEY));
   } catch {
-    return [];
+    return { status: "ok", items: [] };
   }
 }
+
+export function readSelection(storage: SelectionStorage): SelectionItem[] {
+  const stored = readStoredSelection(storage);
+  // A newer build's envelope hydrates nothing here but stays on disk
+  // for the version that can read it.
+  return stored.status === "ok" ? stored.items : [];
+}
+
+export type PersistSelectionResult =
+  | { status: "persisted" }
+  | { status: "blocked"; reason: "unsupported-version"; version: number }
+  | { status: "blocked"; reason: "unavailable" };
 
 export function persistSelection(
   storage: SelectionStorage,
   items: SelectionItem[],
-): void {
+): PersistSelectionResult {
   try {
     // Never re-stamp over an unsupported-version payload: this build
     // cannot represent it, and overwriting would destroy data a future
     // migration could still recover (review 09-14 P1). The refusal must
     // not be silent — saves and clears no-op while the newer payload is
-    // preserved (review 09-14 P3).
-    // TODO: surface a "selection changes are not being saved" notice in
-    // the tray while an unsupported-version payload owns the key.
+    // preserved (review 09-14 P3), so callers get an explicit "blocked"
+    // result and the tray discloses it (review 09-19 P1).
     const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
     if (stored.status === "unsupported-version") {
       console.warn(
         `[selection] stored payload has version ${stored.version}, which this build cannot read; keeping it on disk and skipping this write`,
       );
-      return;
+      return {
+        status: "blocked",
+        reason: "unsupported-version",
+        version: stored.version,
+      };
     }
     // An empty selection on a key-less storage stays key-less: writing
     // here would stamp {"items":[]} for every first-time visitor and
@@ -262,16 +291,18 @@ export function persistSelection(
     // 09-15 06:16 P3). Pre-existing keys still update (clearing the
     // last item must persist).
     if (items.length === 0 && storage.getItem(STORAGE_KEY) === null) {
-      return;
+      return { status: "persisted" };
     }
     storage.setItem(
       STORAGE_KEY,
       JSON.stringify({ version: SELECTION_VERSION, items }),
     );
+    return { status: "persisted" };
   } catch {
     // Private mode / quota-exceeded: the in-memory tray keeps working,
     // persistence just degrades for this visit. Mirrors readSelection's
     // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
+    return { status: "blocked", reason: "unavailable" };
   }
 }
 
@@ -365,12 +396,31 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(selectionReducer, emptySelectionState);
   const { items, announcement } = state;
   const [isHydrated, setIsHydrated] = useState(false);
+  const [persistenceBlocked, setPersistenceBlocked] =
+    useState<SelectionContextValue["persistenceBlocked"]>(null);
 
   useEffect(() => {
     const storage = localStorageOrNull();
+    if (!storage) {
+      // The accessor itself is blocked — every save is a no-op from the
+      // first render, so the unavailable state must be disclosed at
+      // mount, not after the first doomed write (review 09-19 18:17 P2).
+      setPersistenceBlocked("unavailable");
+      dispatch({ type: "hydrate", items: [] });
+      setIsHydrated(true);
+      return;
+    }
+    // Detect a foreign envelope at mount, not just at first write — the
+    // notice must show before the user's first save (review 09-19 P1).
+    // The read goes through readStoredSelection so a throwing getItem
+    // hydrates empty instead of crashing the mount effect.
+    const stored = readStoredSelection(storage);
+    if (stored.status === "unsupported-version") {
+      setPersistenceBlocked("unsupported-version");
+    }
     dispatch({
       type: "hydrate",
-      items: storage ? readSelection(storage) : [],
+      items: stored.status === "ok" ? stored.items : [],
     });
     setIsHydrated(true);
   }, []);
@@ -378,7 +428,16 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isHydrated) return;
     const storage = localStorageOrNull();
-    if (storage) persistSelection(storage, items);
+    if (!storage) {
+      setPersistenceBlocked("unavailable");
+      return;
+    }
+    const result = persistSelection(storage, items);
+    // Surface the refusal reason as-is — a quota/private-mode failure
+    // ("unavailable") is the same silent-save class as a foreign
+    // envelope and must not map back to unblocked (review 09-19
+    // 18:17 P2).
+    setPersistenceBlocked(result.status === "blocked" ? result.reason : null);
   }, [isHydrated, items]);
 
   const has = useCallback(
@@ -407,13 +466,24 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
       items,
       isHydrated,
       announcement,
+      persistenceBlocked,
       has,
       toggle,
       remove,
       move,
       clear,
     }),
-    [announcement, clear, has, isHydrated, items, move, remove, toggle],
+    [
+      announcement,
+      clear,
+      has,
+      isHydrated,
+      items,
+      move,
+      persistenceBlocked,
+      remove,
+      toggle,
+    ],
   );
 
   return (

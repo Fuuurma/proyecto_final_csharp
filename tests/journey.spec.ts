@@ -34,7 +34,7 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
     .getByRole("link", { name: "Wheat Field with Cypresses", exact: true });
   await expect(artworkLink).toBeVisible();
   await artworkLink.click();
-  await expect(page).toHaveURL(/\/art\/436535$/);
+  await expect(page).toHaveURL(/\/art\/436535(\?|$)/);
   await expect(
     page.locator(".detail-heading").getByRole("heading", {
       name: "Wheat Field with Cypresses",
@@ -79,6 +79,53 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
   await expect(page.getByRole("alertdialog")).toBeHidden();
 });
 
+test("Detail Previous/Next follow the browsed Explore order", async ({
+  page,
+}) => {
+  // Fixture mode filters the committed set in curated order, so
+  // "van Gogh" lays out a known sequence: Wheat Field, Sunflowers,
+  // Irises, Roses, La Berceuse, Women Picking Olives, Bouquet.
+  await page.goto("/explore?q=van+Gogh");
+  const cards = page.locator(".artwork-card");
+  await expect(cards).toHaveCount(7);
+  // The `?seq=` link is only truthful once Explore's mount effect has
+  // persisted the browsed order — a click in the gap carries a param
+  // pointing at nothing and the detail route now renders the honest
+  // empty nav instead of the curated pose (review 09-19 18:17 P2).
+  // Wait for the write itself, not a timer.
+  await page.waitForFunction(() =>
+    Object.keys(window.sessionStorage).some(
+      (key) => key.startsWith("mtm-seq:") && key !== "mtm-seq:_index",
+    ),
+  );
+
+  await cards
+    .nth(1)
+    .getByRole("heading")
+    .getByRole("link", { name: "Sunflowers", exact: true })
+    .click();
+  // The link carries an opaque `<key>.<sig>` sequence param — never the
+  // raw search identity (review 09-19 P2 + 18:17 P2).
+  await expect(page).toHaveURL(/\/art\/436524\?seq=[a-z0-9]+\.[a-z0-9]+$/);
+
+  // Position resolves inside the browsed list, not the 45-work curated
+  // set the deep-link fallback would count.
+  await expect(page.locator(".detail-page__position")).toHaveText(/02 \/ 07/);
+  const sequence = page.locator(".detail-sequence");
+  await expect(
+    sequence.getByRole("link", { name: /Wheat Field with Cypresses/ }),
+  ).toHaveAttribute("href", /\/art\/436535\?seq=[a-z0-9]+\.[a-z0-9]+/);
+  await expect(sequence.getByRole("link", { name: /Irises/ })).toHaveAttribute(
+    "href",
+    /\/art\/436528\?seq=[a-z0-9]+\.[a-z0-9]+/,
+  );
+
+  // Arrow-key paging keeps walking the same sequence.
+  await page.keyboard.press("ArrowRight");
+  await expect(page).toHaveURL(/\/art\/436528\?seq=[a-z0-9]+\.[a-z0-9]+$/);
+  await expect(page.locator(".detail-page__position")).toHaveText(/03 \/ 07/);
+});
+
 test("Explore explains an empty search", async ({ page }) => {
   await page.goto("/explore?q=not-a-real-object");
 
@@ -117,7 +164,7 @@ test("Artwork tiles keep image, title, and a path into the record", async ({
 
   await firstCard.locator(".artwork-card__image-link").focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/art\/436535$/);
+  await expect(page).toHaveURL(/\/art\/436535(\?|$)/);
 });
 
 test("Curated paths narrow the review set", async ({ page }) => {

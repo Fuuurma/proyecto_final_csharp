@@ -4,9 +4,10 @@ import {
   useNavigate,
   useSearch,
 } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { ArtworkCard } from "@/components/artwork-card";
+import { ExploreGridFooter } from "@/components/explore-grid-footer";
 import { CloseIcon, SearchIcon } from "@/components/icons";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -29,12 +30,13 @@ import {
   exploreDepartmentSchema,
   isExploreDepartmentFilter,
 } from "@/data/departments";
+import { sequenceParam, writeBrowseSequence } from "@/lib/browse-sequence";
+import { exploreCountText, loadMoreState } from "@/lib/explore-load";
 import { collectPages, dedupeById, type PageCache } from "@/lib/fill-pages";
 import type { Artwork } from "@/lib/met/normalize";
 import {
   isLiveCollectionSearch,
   SEARCH_MAX_PAGE,
-  SEARCH_PAGE_SIZE,
 } from "@/lib/met/search-query";
 import { searchCollection } from "@/lib/met/server-functions";
 import { cn } from "@/lib/utils";
@@ -180,16 +182,46 @@ function Explore() {
   const works = pathWorks ?? dedupeById([...result.artworks, ...extra]);
   const total = pathWorks ? pathWorks.length : result.total;
   const remaining = Math.max(0, total - works.length);
-  const nextCount = Math.min(SEARCH_PAGE_SIZE, remaining);
-  const canLoadMore =
-    isClient &&
-    live &&
-    !shownPath &&
-    !fillExhausted &&
-    remaining > 0 &&
-    page < SEARCH_MAX_PAGE &&
-    result.status !== "error";
-  const atCap = live && !shownPath && remaining > 0 && page >= SEARCH_MAX_PAGE;
+  // The load-more honesty decisions (exact-vs-upstream counts, the cap
+  // note, the exhausted stream) live in loadMoreState so they are
+  // behavior-tested rather than source-grepped (review 09-19 P2).
+  const { canLoadMore, countIsExact, nextCount, atCap } = loadMoreState({
+    source: result.source,
+    status: result.status,
+    live,
+    hasPath: Boolean(shownPath),
+    fillExhausted,
+    remaining,
+    page,
+    isClient,
+  });
+
+  // The displayed order is the sequence the detail route's Previous/Next
+  // follows — persisted under an opaque token so live-fetched works get
+  // working neighbors too (devin 09-09 06:17 P1). The raw identity used
+  // to ride inside every detail URL and storage key (review 09-19 P2).
+  // The param is `<key>.<sig>`: the sig lets the detail route detect a
+  // collision-displaced entry instead of rendering the wrong trail
+  // (review 09-19 18:17 P2).
+  const seqParam = sequenceParam(searchKey);
+  const seqIds = works.map((work) => work.id).join(",");
+  const lastWrittenSeq = useRef("");
+  const worksRef = useRef(works);
+  useEffect(() => {
+    worksRef.current = works;
+  });
+  useEffect(() => {
+    const writeTag = `${seqParam}#${seqIds}`;
+    if (lastWrittenSeq.current === writeTag) return;
+    // Mark only a landed write — a quota-failed one must retry on the
+    // next identity change instead of being swallowed by the sig cache
+    // (review 09-19 P3). `works` comes through a ref: `seqIds` already
+    // captures the identity, and the fresh-array dep re-ran this
+    // needlessly every render.
+    if (writeBrowseSequence(seqParam, worksRef.current)) {
+      lastWrittenSeq.current = writeTag;
+    }
+  }, [seqParam, seqIds]);
 
   useEffect(() => setIsClient(true), []);
 
@@ -385,13 +417,12 @@ function Explore() {
           </ToggleGroup>
         </fieldset>
         <span className="explore-count mono">
-          {result.source === "met"
-            ? total > works.length
-              ? result.preFiltered === false
-                ? `${works.length} loaded · ${total} listed in the department`
-                : `${works.length} loaded · ${total} in the index`
-              : `${works.length} loaded`
-            : `${works.length} / ${total} review works`}
+          {exploreCountText({
+            source: result.source,
+            preFiltered: result.preFiltered,
+            total,
+            loaded: works.length,
+          })}
         </span>
         {query ||
         activePath ||
@@ -542,43 +573,19 @@ function Explore() {
         <>
           <section className="artwork-grid" aria-label="Collection results">
             {works.map((artwork) => (
-              <ArtworkCard key={artwork.id} artwork={artwork} />
+              <ArtworkCard key={artwork.id} artwork={artwork} seq={seqParam} />
             ))}
           </section>
-          {canLoadMore ? (
-            <div className="explore-more">
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                className="load-more"
-                aria-busy={isFilling}
-                disabled={isFilling}
-                onClick={loadMore}
-              >
-                {isFilling ? "Loading more…" : `Load ${nextCount} more`}
-              </Button>
-            </div>
-          ) : null}
-          {fillFailed ? (
-            <p className="explore-fill-failed" role="status">
-              {atCap
-                ? "Some pages failed to load within the record cap — the grid shows what arrived."
-                : "Some pages failed to load — the grid shows what arrived. Load more to try again."}
-            </p>
-          ) : null}
-          {fillExhausted ? (
-            <p className="explore-fill-failed" role="status">
-              No further open-access works surfaced in the loaded records —
-              refine the search to look further.
-            </p>
-          ) : null}
-          {atCap ? (
-            <p className="explore-cap">
-              This view stops at {SEARCH_PAGE_SIZE * SEARCH_MAX_PAGE} records.
-              Narrow the search to look further.
-            </p>
-          ) : null}
+          <ExploreGridFooter
+            canLoadMore={canLoadMore}
+            isFilling={isFilling}
+            countIsExact={countIsExact}
+            nextCount={nextCount}
+            onLoadMore={loadMore}
+            fillFailed={fillFailed}
+            fillExhausted={fillExhausted}
+            atCap={atCap}
+          />
         </>
       ) : result.status === "partial" ? (
         // A partial result with zero usable works is a DEGRADATION, not

@@ -7,31 +7,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const exploreSource = readFileSync(join(here, "explore.tsx"), "utf8");
 
 /**
- * The live-search counter must not present the index total as a
- * viewable denominator: the app can only reach SEARCH_MAX_PAGE pages,
- * so "12 / 1700 matches loaded" implied 1,688 viewable works that are
- * not reachable (devin 21:32 #2). Loaded count and index size stay
- * separate numbers; the atCap notice owns the ceiling explanation.
+ * Explore contracts that still live in the route source. The counter /
+ * load-more honesty pins the old counter-honesty source suite carried
+ * moved into src/lib/explore-load.ts and
+ * src/components/explore-grid-footer.tsx with the 09-19 seqnav refactor
+ * and are covered by real unit/render tests there
+ * (explore-load.test.ts, explore-grid-footer.test.tsx) — what remains
+ * here is what still lives inline in explore.tsx.
  */
-describe("explore counter honesty", () => {
-  it("does not render the old N / M matches-loaded denominator", () => {
-    expect(exploreSource).not.toContain("matches loaded");
-  });
-
-  it("names the index separately from the loaded count", () => {
-    expect(exploreSource).toContain("in the index");
-    expect(exploreSource).toContain("loaded");
-  });
-
-  // Sparse live results kept offering 'Load 24 more' through fill
-  // windows that yielded zero new usable works, up to the record cap
-  // (quick-critic 09-10 14:4x). Two consecutive zero-yield windows must
-  // end the offer with an honest note.
-  it("ends the load-more offer after consecutive zero-yield fill windows", () => {
-    expect(exploreSource).toContain("!fillExhausted");
-    expect(exploreSource).toContain("No further open-access works surfaced");
-  });
-});
 
 // needs-work 09-25 P1: the tail-fill callback returned next.artworks
 // unconditionally — but the server RESOLVES {status:"error",

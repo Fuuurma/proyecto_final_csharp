@@ -4,13 +4,22 @@ import { ChevronDownIcon } from "@/components/icons";
 import { type SelectionItem, useSelection } from "@/lib/selection";
 
 export function SelectionTray() {
-  const { items, isHydrated } = useSelection();
+  const { items, isHydrated, persistenceBlocked } = useSelection();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
   const [collapsed, setCollapsed] = useState(false);
 
-  if (!isHydrated || items.length === 0 || pathname === "/selection") {
+  if (!isHydrated) return null;
+  // A blocked tray must still render: a foreign envelope hydrates to
+  // items=[], so the empty-tray gate would hide the warning until the
+  // first (already-doomed) save — defeating the disclosure (review
+  // 09-19 P1). The /selection gate also yields: removes on that page
+  // are writes that are equally not landing.
+  if (
+    !persistenceBlocked &&
+    (items.length === 0 || pathname === "/selection")
+  ) {
     return null;
   }
 
@@ -27,6 +36,16 @@ export function SelectionTray() {
           <strong>
             {items.length} {items.length === 1 ? "work" : "works"} saved
           </strong>
+          {persistenceBlocked ? (
+            <p className="selection-tray__warning">
+              {persistenceBlocked === "unsupported-version"
+                ? "A newer saved version owns this key — your changes aren't being saved here."
+                : // "unavailable": private mode, quota, or a refused
+                  // accessor — distinct copy, not the foreign-envelope
+                  // explanation (review 09-19 18:17 P2).
+                  "This browser is blocking local storage — changes to your selection won't be saved for a later visit."}
+            </p>
+          ) : null}
         </div>
         <div className="selection-tray__thumbs" aria-hidden="true">
           {items.slice(0, 4).map((item) => (
@@ -44,9 +63,11 @@ export function SelectionTray() {
           ))}
         </div>
         <div className="selection-tray__actions">
-          <Link to="/selection" className="link-action">
-            Open selection <span aria-hidden="true">→</span>
-          </Link>
+          {pathname !== "/selection" ? (
+            <Link to="/selection" className="link-action">
+              Open selection <span aria-hidden="true">→</span>
+            </Link>
+          ) : null}
           <button
             type="button"
             className="selection-tray__toggle"
