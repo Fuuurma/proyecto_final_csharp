@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Artwork } from "@/lib/met/normalize";
 
 type ArtworkImageProps = {
@@ -34,11 +34,12 @@ export function ArtworkImage({
     key: string;
     failedSources: string[];
   }>({ key: sourceKey, failedSources: [] });
-  const failedSources = new Set(
-    imageState.key === sourceKey ? imageState.failedSources : [],
+  const failedSet = useMemo(
+    () => new Set(imageState.key === sourceKey ? imageState.failedSources : []),
+    [imageState, sourceKey],
   );
 
-  const source = sources.find((candidate) => !failedSources.has(candidate));
+  const source = sources.find((candidate) => !failedSet.has(candidate));
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
