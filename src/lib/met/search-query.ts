@@ -31,15 +31,19 @@ export function resolvedDepartmentId(input: SearchTrigger): number | undefined {
   return departmentIdByName(input.department);
 }
 
-export function pageItems<T>(items: T[], page: number): T[] {
+/** Clamp the page into [1, SEARCH_MAX_PAGE] and return its window start. */
+function windowStart(page: number): number {
   const safePage = Math.min(Math.max(page, 1), SEARCH_MAX_PAGE);
-  const start = (safePage - 1) * SEARCH_PAGE_SIZE;
+  return (safePage - 1) * SEARCH_PAGE_SIZE;
+}
+
+export function pageItems<T>(items: T[], page: number): T[] {
+  const start = windowStart(page);
   return items.slice(start, start + SEARCH_PAGE_SIZE);
 }
 
 export function hydrateWindow(objectIds: number[], page: number): number[] {
-  const safePage = Math.min(Math.max(page, 1), SEARCH_MAX_PAGE);
-  const start = (safePage - 1) * SEARCH_PAGE_SIZE;
+  const start = windowStart(page);
   return objectIds.slice(start, start + SEARCH_HYDRATE_WINDOW);
 }
 

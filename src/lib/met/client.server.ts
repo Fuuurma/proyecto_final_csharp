@@ -1,6 +1,15 @@
 import { curatedArtworks } from "@/data/curated-artworks";
 import type { MetDepartment } from "@/data/departments";
-import { CACHE_TTL_MS, getCached, setCached } from "./cache";
+import {
+  CACHE_TTL_MS,
+  dedupeMetFetch,
+  EDGE_TTL_S,
+  getCached,
+  getEdgeCached,
+  getStaleCached,
+  setCached,
+  setEdgeCached,
+} from "./cache";
 import { type Artwork, normalizeMetObject } from "./normalize";
 import {
   metDepartmentsSchema,
@@ -15,23 +24,89 @@ export {
 } from "./search-query";
 
 const API_ROOT = "https://collectionapi.metmuseum.org/public/collection/v1";
-const DEFAULT_TIMEOUT_MS = 8_000;
+const DEFAULT_TIMEOUT_MS = 3_000;
+const CIRCUIT_FAILURE_LIMIT = 3;
+const CIRCUIT_OPEN_MS = 30_000;
+let consecutiveFailures = 0;
+let circuitOpenedAt: number | undefined;
+let probeInFlight = false;
 
-export type MetApiErrorKind =
-  | "timeout"
-  | "unavailable"
-  | "invalid"
-  | "not-found";
+export function resetMetCircuitBreaker(): void {
+  consecutiveFailures = 0;
+  circuitOpenedAt = undefined;
+  probeInFlight = false;
+}
+
+async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  // needs-work 09-26 P3 (latent race): only the call that enters as the
+  // probe may clear the flag — a non-probe call finishing inside the
+  // probe's load window used to clear it early and admit a second
+  // probe. Latent today (timeoutMs 3s << CIRCUIT_OPEN_MS 30s); the
+  // local token makes it impossible.
+  const isProbe = circuitOpenedAt !== undefined;
+  if (circuitOpenedAt !== undefined) {
+    if (now - circuitOpenedAt < CIRCUIT_OPEN_MS || probeInFlight) {
+      // An open circuit must fail fast — never queued for a retry.
+      throw new MetApiError(
+        "5xx",
+        "The Met API circuit is open",
+        undefined,
+        false,
+      );
+    }
+    probeInFlight = true;
+  }
+
+  try {
+    const result = await load();
+    consecutiveFailures = 0;
+    circuitOpenedAt = undefined;
+    return result;
+  } catch (error) {
+    if (
+      error instanceof MetApiError &&
+      (error.kind === "timeout" || error.kind === "5xx")
+    ) {
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= CIRCUIT_FAILURE_LIMIT) {
+        circuitOpenedAt = Date.now();
+      }
+    }
+    throw error;
+  } finally {
+    if (isProbe) probeInFlight = false;
+  }
+}
+
+// Upstream failure taxonomy: "timeout" (the request never answered),
+// "5xx" (the Met is down — a 5xx response OR a transport failure with no
+// response at all, which reads the same to a caller), "4xx" (the request
+// itself was rejected; `status` keeps 404 distinguishable), and "parse"
+// (the upstream answered with something unreadable or off-schema).
+export type MetApiErrorKind = "timeout" | "5xx" | "4xx" | "parse";
 
 export class MetApiError extends Error {
   readonly kind: MetApiErrorKind;
   readonly status: number | undefined;
+  /**
+   * Whether another attempt could plausibly succeed: transient upstream
+   * conditions only. 4xx and parse failures are deterministic, and an
+   * open circuit must fail fast.
+   */
+  readonly retryable: boolean;
 
-  constructor(kind: MetApiErrorKind, message: string, status?: number) {
+  constructor(
+    kind: MetApiErrorKind,
+    message: string,
+    status?: number,
+    retryable?: boolean,
+  ) {
     super(message);
     this.name = "MetApiError";
     this.kind = kind;
     this.status = status;
+    this.retryable = retryable ?? (kind === "timeout" || kind === "5xx");
   }
 }
 
@@ -39,77 +114,132 @@ function withTimeout(timeoutMs: number): AbortSignal {
   return AbortSignal.timeout(timeoutMs);
 }
 
-async function fetchJson(
+const RETRY_MAX_ATTEMPTS = 3; // one attempt + at most two retries
+const RETRY_BASE_DELAY_MS = 150;
+const RETRY_MAX_DELAY_MS = 1_000;
+
+export type MetRetryOptions = {
+  /** Total attempts for one request — default 3 (at most two retries). */
+  attempts?: number;
+  /** Sleep between attempts; tests inject a noop under fake timers. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Jitter source; tests inject a deterministic PRNG. */
+  random?: () => number;
+};
+
+function defaultRetrySleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Full jitter: uniform in [0, min(cap, base * 2^attempt)) so a burst of
+// retrying callers does not re-synchronize against an upstream that is
+// already struggling.
+function retryDelayMs(attempt: number, random: () => number): number {
+  const ceiling = Math.min(
+    RETRY_MAX_DELAY_MS,
+    RETRY_BASE_DELAY_MS * 2 ** attempt,
+  );
+  return Math.floor(random() * ceiling);
+}
+
+async function fetchJsonOnce(
   url: string,
   fetcher: typeof fetch,
   timeoutMs: number,
 ): Promise<unknown> {
-  let response: Response;
+  return withMetCircuit(async () => {
+    let response: Response;
 
-  try {
-    response = await fetcher(url, {
-      signal: withTimeout(timeoutMs),
-      headers: {
-        "User-Agent":
-          "MeetTheMet/1.0 (Collection Explorer; portfolio rebuild; https://github.com)",
-        Accept: "application/json",
-      },
-    });
-  } catch (error) {
-    const name =
-      error && typeof error === "object" && "name" in error ? error.name : null;
-    if (name === "TimeoutError" || name === "AbortError") {
-      throw new MetApiError("timeout", `The Met request timed out: ${url}`);
+    try {
+      response = await fetcher(url, {
+        signal: withTimeout(timeoutMs),
+        headers: {
+          "User-Agent":
+            "MeetTheMet/1.0 (Collection Explorer; portfolio rebuild; https://github.com)",
+          Accept: "application/json",
+        },
+      });
+    } catch (error) {
+      const name =
+        error && typeof error === "object" && "name" in error
+          ? error.name
+          : null;
+      if (name === "TimeoutError" || name === "AbortError") {
+        throw new MetApiError("timeout", `The Met request timed out: ${url}`);
+      }
+
+      // No response at all — DNS, refused connection, TLS. Reads as
+      // "the Met is down", the same bucket as a 5xx for the caller.
+      throw new MetApiError("5xx", `The Met request failed: ${url}`);
     }
 
-    throw new MetApiError("unavailable", `The Met request failed: ${url}`);
-  }
+    if (!response.ok) {
+      throw new MetApiError(
+        response.status >= 500 ? "5xx" : "4xx",
+        response.status === 404
+          ? `The Met object was not found: ${url}`
+          : `The Met API returned ${response.status}`,
+        response.status,
+      );
+    }
 
-  if (response.status === 404) {
-    throw new MetApiError(
-      "not-found",
-      `The Met object was not found: ${url}`,
-      404,
-    );
-  }
-
-  if (!response.ok) {
-    throw new MetApiError(
-      "unavailable",
-      `The Met API returned ${response.status}`,
-      response.status,
-    );
-  }
-
-  try {
-    return await response.json();
-  } catch {
-    throw new MetApiError("invalid", `The Met returned malformed JSON: ${url}`);
-  }
+    try {
+      return await response.json();
+    } catch {
+      throw new MetApiError("parse", `The Met returned malformed JSON: ${url}`);
+    }
+  });
 }
 
-export async function fetchMetObject(
-  objectId: number,
-  options: { fetcher?: typeof fetch; timeoutMs?: number } = {},
-): Promise<Artwork> {
-  const url = `${API_ROOT}/objects/${objectId}`;
-  const useCache = options.fetcher === undefined;
+async function fetchJson(
+  url: string,
+  fetcher: typeof fetch,
+  timeoutMs: number,
+  retry?: MetRetryOptions,
+): Promise<unknown> {
+  // Every upstream call is an idempotent GET, so retrying is always safe;
+  // `retryable` decides whether the failure deserves another attempt.
+  const attempts = Math.max(
+    1,
+    Math.floor(retry?.attempts ?? RETRY_MAX_ATTEMPTS),
+  );
+  const sleep = retry?.sleep ?? defaultRetrySleep;
+  const random = retry?.random ?? Math.random;
 
-  if (useCache) {
-    const cached = getCached<Artwork>(url);
-    if (cached) return cached;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetchJsonOnce(url, fetcher, timeoutMs);
+    } catch (error) {
+      const retryable = error instanceof MetApiError && error.retryable;
+      if (!retryable || attempt + 1 >= attempts) throw error;
+      await sleep(retryDelayMs(attempt, random));
+    }
   }
+  throw new Error("unreachable");
+}
 
+type MetRequestOptions = {
+  fetcher?: typeof fetch;
+  timeoutMs?: number;
+  retry?: MetRetryOptions;
+};
+
+async function loadMetObject(
+  url: string,
+  objectId: number,
+  options: MetRequestOptions,
+): Promise<Artwork> {
   const payload = await fetchJson(
     url,
     options.fetcher ?? fetch,
     options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    options.retry,
   );
 
   const parsed = metObjectSchema.safeParse(payload);
   if (!parsed.success) {
     throw new MetApiError(
-      "invalid",
+      "parse",
       `The Met object ${objectId} did not match the expected shape`,
     );
   }
@@ -119,59 +249,160 @@ export async function fetchMetObject(
   // too (c53e8ba removed the normalizer's magic-ID special case; without
   // this overlay, live searches showing 56353 lost "The Great Wave").
   const curated = curatedArtworks.find((a) => a.id === artwork.id);
-  const withCuratedTitle = curated?.displayTitle
+  return curated?.displayTitle
     ? { ...artwork, displayTitle: curated.displayTitle }
     : artwork;
-  if (useCache) setCached(url, withCuratedTitle, CACHE_TTL_MS.object);
-  return withCuratedTitle;
 }
 
-export async function fetchMetDepartments(
-  options: { fetcher?: typeof fetch; timeoutMs?: number } = {},
+export async function fetchMetObject(
+  objectId: number,
+  options: MetRequestOptions = {},
+): Promise<Artwork> {
+  const url = `${API_ROOT}/objects/${objectId}`;
+  // A custom fetcher bypasses both cache tiers and dedupe so tests stay
+  // deterministic — caching is only for the production global-fetch path.
+  if (options.fetcher !== undefined)
+    return loadMetObject(url, objectId, options);
+
+  return dedupeMetFetch(url, async () => {
+    const cached =
+      getCached<Artwork>(url) ?? (await getEdgeCached<Artwork>(url));
+    if (cached) {
+      // An edge hit warms the isolate-local tier for repeat reads.
+      setCached(url, cached, CACHE_TTL_MS.object);
+      return cached;
+    }
+
+    let artwork: Artwork;
+    try {
+      artwork = await loadMetObject(url, objectId, options);
+    } catch (error) {
+      const stale = getStaleCached<Artwork>(url);
+      if (
+        stale &&
+        error instanceof MetApiError &&
+        (error.kind === "timeout" || error.kind === "5xx")
+      )
+        return stale;
+      throw error;
+    }
+    setCached(url, artwork, CACHE_TTL_MS.object);
+    await setEdgeCached(url, artwork, EDGE_TTL_S.object);
+    return artwork;
+  });
+}
+
+async function loadMetDepartments(
+  url: string,
+  options: MetRequestOptions,
 ): Promise<MetDepartment[]> {
-  const url = `${API_ROOT}/departments`;
-  const useCache = options.fetcher === undefined;
-
-  if (useCache) {
-    const cached = getCached<MetDepartment[]>(url);
-    if (cached) return cached;
-  }
-
   const payload = await fetchJson(
     url,
     options.fetcher ?? fetch,
     options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    options.retry,
   );
   const parsed = metDepartmentsSchema.safeParse(payload);
 
   if (!parsed.success) {
     throw new MetApiError(
-      "invalid",
+      "parse",
       "The Met department index did not match the expected shape",
     );
   }
 
-  const departments = parsed.data.departments.map((department) => ({
+  return parsed.data.departments.map((department) => ({
     id: department.departmentId,
     name: department.displayName,
   }));
-  if (useCache) setCached(url, departments, CACHE_TTL_MS.departments);
-  return departments;
+}
+
+export async function fetchMetDepartments(
+  options: MetRequestOptions = {},
+): Promise<MetDepartment[]> {
+  const url = `${API_ROOT}/departments`;
+  if (options.fetcher !== undefined) return loadMetDepartments(url, options);
+
+  return dedupeMetFetch(url, async () => {
+    const cached =
+      getCached<MetDepartment[]>(url) ??
+      (await getEdgeCached<MetDepartment[]>(url));
+    if (cached) {
+      setCached(url, cached, CACHE_TTL_MS.departments);
+      return cached;
+    }
+
+    let departments: MetDepartment[];
+    try {
+      departments = await loadMetDepartments(url, options);
+    } catch (error) {
+      const stale = getStaleCached<MetDepartment[]>(url);
+      if (
+        stale &&
+        error instanceof MetApiError &&
+        (error.kind === "timeout" || error.kind === "5xx")
+      )
+        return stale;
+      throw error;
+    }
+    setCached(url, departments, CACHE_TTL_MS.departments);
+    await setEdgeCached(url, departments, EDGE_TTL_S.departments);
+    return departments;
+  });
 }
 
 /** ID-list entries above this size skip the cache: generous for any
  * real paging session (page size 24), small against a 128MB isolate. */
 export const MAX_CACHED_SEARCH_IDS = 20_000;
 
+// needs-work 09-26 P2: over-bound listings skip the value cache (isolate
+// memory), but that left whole-department browses and bare q=* searches
+// with no stale tier during upstream outages — they took the hard error
+// while small searches degraded. One oversized slot (most recent wins,
+// bounded: a single entry cannot burst the isolate) retains the latest
+// over-bound listing purely for stale-on-error service.
+let oversizedStale: { key: string; value: MetSearchIds } | null = null;
+
+export type MetSearchIds = {
+  total: number;
+  objectIds: number[];
+  preFiltered: boolean;
+};
+
+async function loadMetSearchIds(
+  cacheKey: string,
+  preFiltered: boolean,
+  options: MetRequestOptions,
+): Promise<MetSearchIds> {
+  const payload = await fetchJson(
+    cacheKey,
+    options.fetcher ?? fetch,
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    options.retry,
+  );
+  const parsed = metSearchSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    throw new MetApiError(
+      "parse",
+      "The Met search response did not match the expected shape",
+    );
+  }
+
+  return {
+    total: parsed.data.total,
+    objectIds: parsed.data.objectIDs ?? [],
+    preFiltered,
+  };
+}
+
 export async function fetchMetSearchIds(
   query: string,
-  options: {
-    fetcher?: typeof fetch;
-    timeoutMs?: number;
+  options: MetRequestOptions & {
     limit?: number;
     departmentId?: number;
   } = {},
-): Promise<{ total: number; objectIds: number[]; preFiltered: boolean }> {
+): Promise<MetSearchIds> {
   let url: URL;
   // Whether the upstream ALREADY filtered to open-access rows decides how
   // the caller may interpret drops: /search honours the params, /objects
@@ -204,59 +435,66 @@ export async function fetchMetSearchIds(
   // The `limit` option is a caller-side slice, not part of the upstream
   // request, so it must not participate in the cache key.
   const cacheKey = url.toString();
-  const useCache = options.fetcher === undefined;
+  const slice = (result: MetSearchIds): MetSearchIds =>
+    options.limit === undefined
+      ? result
+      : { ...result, objectIds: result.objectIds.slice(0, options.limit) };
 
-  if (useCache) {
-    const cached = getCached<{
-      total: number;
-      objectIds: number[];
-      preFiltered: boolean;
-    }>(cacheKey);
+  if (options.fetcher !== undefined) {
+    return slice(await loadMetSearchIds(cacheKey, preFiltered, options));
+  }
+
+  const result = await dedupeMetFetch(cacheKey, async () => {
+    const cached =
+      getCached<MetSearchIds>(cacheKey) ??
+      (await getEdgeCached<MetSearchIds>(cacheKey));
     if (cached) {
-      return options.limit === undefined
-        ? cached
-        : { ...cached, objectIds: cached.objectIds.slice(0, options.limit) };
+      setCached(cacheKey, cached, CACHE_TTL_MS.search);
+      return cached;
     }
-  }
 
-  const payload = await fetchJson(
-    cacheKey,
-    options.fetcher ?? fetch,
-    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-  );
-  const parsed = metSearchSchema.safeParse(payload);
+    let loaded: MetSearchIds;
+    try {
+      loaded = await loadMetSearchIds(cacheKey, preFiltered, options);
+    } catch (error) {
+      const stale = getStaleCached<MetSearchIds>(cacheKey);
+      if (
+        stale &&
+        error instanceof MetApiError &&
+        (error.kind === "timeout" || error.kind === "5xx")
+      )
+        return stale;
+      if (
+        oversizedStale?.key === cacheKey &&
+        error instanceof MetApiError &&
+        (error.kind === "timeout" || error.kind === "5xx")
+      )
+        return oversizedStale.value;
+      throw error;
+    }
 
-  if (!parsed.success) {
-    throw new MetApiError(
-      "invalid",
-      "The Met search response did not match the expected shape",
-    );
-  }
-
-  const objectIds = parsed.data.objectIDs ?? [];
-  const result = { total: parsed.data.total, objectIds, preFiltered };
-
-  // Value-size bound: MAX_ENTRIES bounds the cache by KEY count, not
-  // weight — a whole-department /objects listing (~100k ids) or a bare
-  // q=* search (~470k ids) would ride in as a single entry, and a burst
-  // of large listings pressures the Worker isolate's memory (devin
-  // 09-10 12:50 P1). Oversize listings still serve, just uncached: the
-  // 60s TTL would forget them mid-paging anyway, and refetching is the
-  // same upstream cost the no-cache path always paid.
-  if (useCache && objectIds.length <= MAX_CACHED_SEARCH_IDS) {
-    setCached(cacheKey, result, CACHE_TTL_MS.search);
-  }
-  return options.limit === undefined
-    ? result
-    : { ...result, objectIds: objectIds.slice(0, options.limit) };
+    // Value-size bound: MAX_ENTRIES bounds the cache by KEY count, not
+    // weight — a whole-department /objects listing (~100k ids) or a bare
+    // q=* search (~470k ids) would ride in as a single entry, and a burst
+    // of large listings pressures the Worker isolate's memory (devin
+    // 09-10 12:50 P1). Oversize listings still serve, just uncached: the
+    // search TTL would forget them mid-paging anyway, and refetching is
+    // the same upstream cost the no-cache path always paid.
+    if (loaded.objectIds.length <= MAX_CACHED_SEARCH_IDS) {
+      setCached(cacheKey, loaded, CACHE_TTL_MS.search);
+      await setEdgeCached(cacheKey, loaded, EDGE_TTL_S.search);
+    } else {
+      oversizedStale = { key: cacheKey, value: loaded };
+    }
+    return loaded;
+  });
+  return slice(result);
 }
 
 export async function fetchMetObjects(
   objectIds: number[],
-  options: {
+  options: MetRequestOptions & {
     concurrency?: number;
-    fetcher?: typeof fetch;
-    timeoutMs?: number;
   } = {},
 ): Promise<Artwork[]> {
   const queue = objectIds.map((objectId, index) => ({ objectId, index }));

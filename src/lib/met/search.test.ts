@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SEARCH_PAGE_SIZE } from "./client.server";
 import {
@@ -7,6 +9,11 @@ import {
   resolvedDepartmentId,
   takeOpenAccessPage,
 } from "./search-query";
+
+const src = readFileSync(
+  resolve(process.cwd(), "src/lib/met/search-query.ts"),
+  "utf8",
+);
 
 describe("live collection search trigger", () => {
   it("keeps empty Explore on the curated review set", () => {
@@ -65,6 +72,18 @@ describe("resolvedDepartmentId", () => {
         department: "all",
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("window dedup contract", () => {
+  it("pageItems and hydrateWindow share the single clamp+offset source", () => {
+    // needs-work 09-24 P3: both functions opened with an identical
+    // clamp+offset pair that could drift apart unnoticed.
+    expect(
+      (src.match(/Math\.min\(Math\.max\(page, 1\), SEARCH_MAX_PAGE\)/g) ?? [])
+        .length,
+    ).toBe(1);
+    expect((src.match(/windowStart\(page\)/g) ?? []).length).toBe(2);
   });
 });
 

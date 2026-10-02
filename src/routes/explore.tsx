@@ -132,11 +132,15 @@ function Explore() {
     department: activeDepartment,
     departmentId,
   });
+  // The label must follow the query's precedence (resolvedDepartmentId
+  // prefers departmentId): a URL carrying both a name and an id used to
+  // label the grid with the name while querying the id — a label-vs-
+  // grid lie (needs-work 09-26 P2).
   const liveDepartmentName =
-    activeDepartment !== "all"
-      ? activeDepartment
-      : departmentId !== undefined
-        ? (departmentNameById(departmentId) ?? result.department)
+    departmentId !== undefined
+      ? (departmentNameById(departmentId) ?? result.department)
+      : activeDepartment !== "all"
+        ? activeDepartment
         : undefined;
   const [extra, setExtra] = useState<Artwork[]>([]);
   const [isFilling, setIsFilling] = useState(false);
@@ -275,6 +279,16 @@ function Explore() {
                 page: nextPage,
               },
             });
+            // The server RESOLVES {status: "error", artworks: []} when
+            // the curated fallback is empty — the normal shape for any
+            // page >= 2. Returning the empty array would let
+            // collectPages cache the failed page as a legitimate empty
+            // and let the zero-yield counter blame the index; throwing
+            // routes to the honest fillFailed handler and leaves the
+            // page uncached (needs-work 09-25 P1).
+            if (next.status === "error") {
+              throw new Error(next.message ?? "Met collection search");
+            }
             return next.artworks;
           },
           {
@@ -573,6 +587,32 @@ function Explore() {
             atCap={atCap}
           />
         </>
+      ) : result.status === "partial" ? (
+        // A partial result with zero usable works is a DEGRADATION, not
+        // an empty index — the old branch claimed "The index is quiet
+        // here." while the alert above said the page couldn't be fully
+        // checked (grok 10-02: contradictory + double-printed).
+        <section aria-live="polite">
+          <Empty>
+            <EmptyHeader>
+              <span className="eyebrow">Collection unavailable</span>
+              <EmptyTitle>This page couldn't be fully checked.</EmptyTitle>
+              <EmptyDescription>
+                {result.message ??
+                  "The live Met collection is answering slowly."}
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Link
+                to="/explore"
+                search={{}}
+                className={cn(buttonVariants({ size: "lg" }), "button-link")}
+              >
+                Return to the review set
+              </Link>
+            </EmptyContent>
+          </Empty>
+        </section>
       ) : (
         <section aria-live="polite">
           <Empty>

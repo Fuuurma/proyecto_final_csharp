@@ -7,6 +7,7 @@ import {
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
+import { DetailSkeleton } from "@/components/detail-skeleton";
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
@@ -27,7 +28,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { curatedArtworks } from "@/data/curated-artworks";
 import { isReviewDepartmentName } from "@/data/departments";
 import {
@@ -112,6 +112,12 @@ function ArtworkDetail() {
   const { objectId } = Route.useParams();
   const { seq } = Route.useSearch();
   const navigate = useNavigate();
+  // grok 23:45 #3: "Open image" must target the view the user has
+  // tabbed into, not always the primary image. (Hooks live above the
+  // early return — react-doctor rules-of-hooks, 09-27 re-sweep.)
+  const [openImageSrc, setOpenImageSrc] = useState<string | undefined>(
+    undefined,
+  );
 
   const artwork = result?.status === "success" ? result.artwork : null;
 
@@ -204,7 +210,6 @@ function ArtworkDetail() {
       ].filter((source): source is string => Boolean(source)),
     ),
   ];
-
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
@@ -249,6 +254,7 @@ function ArtworkDetail() {
             key={objectId}
             artwork={artwork}
             imageSources={imageSources}
+            onActiveSrcChange={setOpenImageSrc}
           />
           <div className="detail-image-footer">
             <p className="image-credit">
@@ -256,7 +262,12 @@ function ArtworkDetail() {
             </p>
             {artwork.primaryImage || artwork.primaryImageSmall ? (
               <a
-                href={artwork.primaryImage ?? artwork.primaryImageSmall ?? "#"}
+                href={
+                  openImageSrc ??
+                  artwork.primaryImage ??
+                  artwork.primaryImageSmall ??
+                  "#"
+                }
                 target="_blank"
                 rel="noreferrer"
                 className="link-action link-action--quiet"
@@ -452,35 +463,19 @@ function getAdjacentArtworks(artwork: Artwork): {
 }
 
 function ArtworkDetailPending() {
+  // Curated objects already know their image ratio (seed data), so
+  // the loading frame can reserve the real box and skip the layout
+  // jump when the record lands (grok 09-30 skeleton-ratio row).
+  const { objectId } = Route.useParams();
+  const curated = curatedArtworks.find(
+    (candidate) => candidate.id === Number(objectId),
+  );
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
         <span className="link-action">Reading object record…</span>
       </div>
-      <div className="detail-layout page-frame detail-loading" aria-busy="true">
-        <div>
-          <Skeleton className="detail-loading__image" />
-          <Skeleton className="detail-loading__credit" />
-        </div>
-        <div className="detail-loading__copy">
-          <Skeleton className="detail-loading__eyebrow" />
-          <Skeleton className="detail-loading__title" />
-          <Skeleton className="detail-loading__title detail-loading__title--short" />
-          <Skeleton className="detail-loading__artist" />
-          <div className="detail-loading__actions">
-            <Skeleton />
-            <Skeleton />
-          </div>
-          <div className="detail-loading__metadata">
-            {[1, 2, 3, 4, 5].map((row) => (
-              <Skeleton key={row} />
-            ))}
-          </div>
-        </div>
-        <p className="sr-only" role="status" aria-live="polite">
-          Bringing the record and its image into view.
-        </p>
-      </div>
+      <DetailSkeleton imageAspectRatio={curated?.imageAspectRatio} />
     </main>
   );
 }
@@ -488,17 +483,28 @@ function ArtworkDetailPending() {
 function ArtworkStage({
   artwork,
   imageSources,
+  onActiveSrcChange,
 }: {
   artwork: Artwork;
   imageSources: string[];
+  onActiveSrcChange?: (src: string) => void;
 }) {
-  const [activeSrc, setActiveSrc] = useState(imageSources[0] ?? null);
+  const [activeSrc, setActiveSrcState] = useState(imageSources[0] ?? null);
   const [isOpen, setIsOpen] = useState(false);
+  const setActiveSrc = (src: string) => {
+    setActiveSrcState(src);
+    onActiveSrcChange?.(src);
+  };
 
   return (
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <div className="detail-image-field">
+        <div
+          id="artwork-stage-panel"
+          role="tabpanel"
+          aria-label="Selected object view"
+          className="detail-image-field"
+        >
           {activeSrc ? (
             <DialogTrigger
               render={
@@ -565,15 +571,44 @@ function ArtworkStage({
       </Dialog>
 
       {imageSources.length > 1 ? (
-        <div className="artwork-views" role="tablist" aria-label="Object views">
+        <div
+          className="artwork-views"
+          role="tablist"
+          aria-label="Object views"
+          onKeyDown={(event) => {
+            // WAI-ARIA tabs: the roster is a single tab stop with
+            // roving focus; arrows/Home/End move selection (grok
+            // 23:45 #4 — pointer-only tabs collapsed non-pointer
+            // users to the primary image).
+            const current = imageSources.indexOf(activeSrc);
+            let next: number | null = null;
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+              next = (current + 1) % imageSources.length;
+            } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+              next = (current - 1 + imageSources.length) % imageSources.length;
+            } else if (event.key === "Home") {
+              next = 0;
+            } else if (event.key === "End") {
+              next = imageSources.length - 1;
+            }
+            if (next !== null) {
+              event.preventDefault();
+              setActiveSrc(imageSources[next]);
+              document.getElementById(`view-tab-${next}`)?.focus();
+            }
+          }}
+        >
           {imageSources.map((source, index) => {
             const selected = source === activeSrc;
             return (
               <button
                 key={source}
+                id={`view-tab-${index}`}
                 type="button"
                 role="tab"
                 aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                aria-controls="artwork-stage-panel"
                 aria-label={
                   index === 0 ? "Primary image" : `Additional view ${index}`
                 }

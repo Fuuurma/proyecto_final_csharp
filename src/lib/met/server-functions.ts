@@ -23,7 +23,11 @@ import {
   SEARCH_MAX_PAGE,
   takeOpenAccessPage,
 } from "./search-query";
-import { computeSearchStatus } from "./search-status";
+import {
+  computeSearchStatus,
+  type SearchFailureKind,
+  searchFailureKind,
+} from "./search-status";
 
 const collectionSearchInputSchema = z.object({
   q: z.string().trim().max(120).default(""),
@@ -52,6 +56,12 @@ export type CollectionSearchResult = {
   preFiltered?: boolean;
   artworks: Artwork[];
   message?: string;
+  /**
+   * Typed upstream failure ("timeout" | "5xx" | "4xx" | "parse") when the
+   * live Met call behind this result threw — lets the UI distinguish
+   * "Met down" from "no results" instead of reading `message`.
+   */
+  failure?: SearchFailureKind;
 };
 
 export type ArtworkDetailResult =
@@ -65,6 +75,7 @@ export type ArtworkDetailResult =
       source: "fixture" | "met";
       artwork: null;
       message: string;
+      failure?: SearchFailureKind;
     };
 
 export type DepartmentIndexResult = {
@@ -72,6 +83,7 @@ export type DepartmentIndexResult = {
   source: "fixture" | "met";
   departments: MetDepartment[];
   message?: string;
+  failure?: SearchFailureKind;
 };
 
 const missingDepartmentFilter = "__none__";
@@ -131,12 +143,14 @@ function apiErrorMessage(error: unknown, subject: string): string {
   switch (error.kind) {
     case "timeout":
       return `The ${subject} took too long to answer. Try again in a moment.`;
-    case "invalid":
-      return `The ${subject} returned an unreadable record. Try another search.`;
-    case "not-found":
-      return "That object is not available in the public collection right now.";
-    case "unavailable":
+    case "5xx":
       return `The ${subject} is temporarily unavailable. Try again in a moment.`;
+    case "4xx":
+      return error.status === 404
+        ? "That object is not available in the public collection right now."
+        : `The ${subject} could not answer that request. Try another search.`;
+    case "parse":
+      return `The ${subject} returned an unreadable record. Try another search.`;
   }
 }
 
@@ -238,7 +252,39 @@ export const searchCollection = createServerFn({ method: "GET" })
 
       // Fully hydrated, zero usable after the sieve: genuinely no
       // open-access matches — honest empty (devin 09-10 08:10 / 06:57).
+      // Partial hydration is NOT a genuine empty: the unloaded
+      // remainder may hold open-access works, so the zero-usable case
+      // degrades honestly instead of claiming certainty
+      // (needs-work 09-24 P2).
       if (artworks.length === 0) {
+        // Zero usable: computeSearchStatus is the single decision
+        // point (needs-work 10-01 P2 — the duplicated inline semantics
+        // could drift from it); this block only maps status -> the
+        // honest message and payload.
+        const zeroUsableStatus = computeSearchStatus({
+          totalIds: search.objectIds.length,
+          hydratedCount: hydrated.length,
+          pageIdCount: pageIds.length,
+          usableCount: 0,
+          preFiltered: search.preFiltered,
+        });
+        if (zeroUsableStatus === "partial") {
+          return {
+            status: "partial",
+            source: "met",
+            query: q,
+            department:
+              (mappedDepartmentId !== undefined
+                ? departmentNameById(mappedDepartmentId)
+                : undefined) ?? mappedDepartment,
+            departmentId: mappedDepartmentId,
+            total: search.total,
+            preFiltered: search.preFiltered,
+            artworks: [],
+            message:
+              "The live Met collection is answering slowly; this page couldn't be fully checked.",
+          };
+        }
         return {
           status: "empty",
           source: "met",
@@ -246,7 +292,10 @@ export const searchCollection = createServerFn({ method: "GET" })
           department:
             (mappedDepartmentId !== undefined
               ? departmentNameById(mappedDepartmentId)
-              : undefined) ?? mappedDepartment,
+              : undefined) ??
+            (mappedDepartment === missingDepartmentFilter
+              ? department
+              : mappedDepartment),
           departmentId: mappedDepartmentId,
           total: search.total,
           preFiltered: search.preFiltered,
@@ -304,6 +353,7 @@ export const searchCollection = createServerFn({ method: "GET" })
           status: "partial",
           message:
             "The live Met collection is answering slowly. Showing committed works from this room.",
+          failure: searchFailureKind(error),
         };
       }
 
@@ -319,6 +369,7 @@ export const searchCollection = createServerFn({ method: "GET" })
         total: 0,
         artworks: [],
         message: apiErrorMessage(error, "Met collection search"),
+        failure: searchFailureKind(error),
       };
     }
   });
@@ -352,6 +403,7 @@ export const getArtwork = createServerFn({ method: "GET" })
         source: "met",
         artwork: null,
         message: apiErrorMessage(error, "Met object record"),
+        failure: searchFailureKind(error),
       };
     }
   });
@@ -381,6 +433,7 @@ export const listDepartments = createServerFn({ method: "GET" }).handler(
         source: "fixture",
         departments: metDepartments,
         message: apiErrorMessage(error, "Met department index"),
+        failure: searchFailureKind(error),
       };
     }
   },
