@@ -40,4 +40,17 @@ describe("artwork-views tablist keyboard contract", () => {
     expect(src).toContain('id="artwork-stage-panel"');
     expect(src).toContain('role="tabpanel"');
   });
+
+  // needs-work 09-27 P1 / grok 01:45 #1: the tablist consumed arrows
+  // with preventDefault only, so the same keydown kept bubbling to the
+  // window-level prev/next artwork listener and navigated the route
+  // out from under the keyboard user. Every key the tablist handles
+  // must stop propagation before it can reach that page shortcut.
+  it("keeps handled keys inside the tablist — no page navigation", () => {
+    const tablistStart = src.indexOf('role="tablist"');
+    expect(tablistStart).toBeGreaterThan(-1);
+    const tablistEnd = src.indexOf("imageSources.map", tablistStart);
+    const tablistBlock = src.slice(tablistStart, tablistEnd);
+    expect(tablistBlock).toContain("event.stopPropagation()");
+  });
 });
