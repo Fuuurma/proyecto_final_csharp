@@ -35,4 +35,34 @@ describe("normalizeMetObject", () => {
     expect(artwork.artist).toBe("A maker");
     expect(artwork.imageAspectRatio).toBe(1.5);
   });
+
+  it("falls back to a square ratio when the aspect math overflows to Infinity", () => {
+    const artwork = normalizeMetObject({
+      objectID: 11,
+      title: "A work",
+      measurements: [
+        {
+          elementName: "Overall",
+          elementMeasurements: { Height: 1e-308, Width: 1e308 },
+        },
+      ],
+    });
+
+    expect(artwork.imageAspectRatio).toBe(1);
+  });
+
+  it("falls back to a square ratio when the aspect math underflows to zero", () => {
+    const artwork = normalizeMetObject({
+      objectID: 12,
+      title: "A work",
+      measurements: [
+        {
+          elementName: "Overall",
+          elementMeasurements: { Height: 1e308, Width: 1e-308 },
+        },
+      ],
+    });
+
+    expect(artwork.imageAspectRatio).toBe(1);
+  });
 });
