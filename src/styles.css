@@ -692,6 +692,13 @@ img {
   text-transform: none;
 }
 
+/* Artist byline in the grotesk voice: DESIGN.md reserves mono for
+   accession numbers, object IDs, and index labels only. */
+.home-gallery__artist {
+  color: var(--archive);
+  font-size: 0.85rem;
+}
+
 .home-gallery__footer {
   display: flex;
   align-items: center;
@@ -2864,9 +2871,16 @@ body:has(.selection-tray.is-collapsed) {
   *::before,
   *::after {
     scroll-behavior: auto;
-    transition-duration: 0.01ms;
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
+    /* !important is load-bearing: specificity-0 loses to the
+       tw-animate-css utilities (dialog fade/zoom, skeleton pulse),
+       so without it this block is a no-op for exactly the motion
+       that remains in the app. */
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
+    animation-iteration-count: 1 !important;
   }
 
   .artwork-image img {

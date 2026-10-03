@@ -13,11 +13,16 @@ export function ArtworkCard({ artwork, seq }: ArtworkCardProps) {
   const search = seq ? { seq } : {};
   return (
     <article className="artwork-card">
+      {/* Decorative duplicate: the h3 title link below goes to the same
+          record. Hidden from AT and the tab order so each card is one
+          stop instead of two. */}
       <Link
         to="/art/$objectId"
         params={{ objectId: String(artwork.id) }}
         search={search}
         className="artwork-card__image-link"
+        aria-hidden="true"
+        tabIndex={-1}
       >
         <ArtworkImage artwork={artwork} />
       </Link>
