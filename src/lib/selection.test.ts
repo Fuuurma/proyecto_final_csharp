@@ -48,6 +48,8 @@ describe("selectionItemFromArtwork", () => {
       primaryImage: "https://example.com/work-large.jpg",
       primaryImageSmall: "https://example.com/work.jpg",
       imageAspectRatio: 1,
+      isPublicDomain: true,
+      rights: null,
     });
   });
 });
@@ -65,6 +67,24 @@ describe("artworkFromSelectionItem", () => {
     );
     expect(local.department).toBeNull();
     expect(local.additionalImages).toEqual([]);
+  });
+
+  it("preserves non-public-domain status and rights text for offline revisits", () => {
+    const restricted = {
+      ...artwork,
+      isPublicDomain: false,
+      rights: "© 2018 Estate of Pablo Picasso",
+    };
+    const saved = selectionItemFromArtwork(restricted);
+
+    expect(saved).toMatchObject({
+      isPublicDomain: false,
+      rights: "© 2018 Estate of Pablo Picasso",
+    });
+    expect(artworkFromSelectionItem(saved)).toMatchObject({
+      isPublicDomain: false,
+      rights: "© 2018 Estate of Pablo Picasso",
+    });
   });
 });
 
@@ -94,6 +114,19 @@ describe("parseStoredSelection", () => {
     expect(parseStoredSelection(stored)).toEqual({
       status: "ok",
       items: [item],
+    });
+  });
+
+  it("migrates saved items without rights fields to unknown, not public domain", () => {
+    const legacy = { ...item } as Record<string, unknown>;
+    delete legacy.isPublicDomain;
+    delete legacy.rights;
+
+    expect(
+      parseStoredSelection(JSON.stringify({ version: 1, items: [legacy] })),
+    ).toMatchObject({
+      status: "ok",
+      items: [{ isPublicDomain: null, rights: null }],
     });
   });
 

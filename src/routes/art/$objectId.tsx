@@ -7,6 +7,7 @@ import {
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
+import { ArtworkRightsMetadata } from "@/components/artwork-rights-metadata";
 import { DetailSkeleton } from "@/components/detail-skeleton";
 import {
   ArrowLeftIcon,
@@ -35,6 +36,7 @@ import {
   type SequenceNeighbors,
 } from "@/lib/browse-sequence";
 import type { Artwork } from "@/lib/met/normalize";
+import { artworkDetailMetaDescription } from "@/lib/met/rights";
 import {
   type ArtworkDetailResult,
   getArtwork,
@@ -71,14 +73,14 @@ export const Route = createFileRoute("/art/$objectId")({
       {
         name: "description",
         content:
-          "This collection object could not be loaded from the Met Open Access API.",
+          "This collection object could not be loaded from The Met collection API.",
       },
     ];
 
     if (loaderData && loaderData.status === "success") {
       const art = loaderData.artwork;
       const title = `${art.displayTitle}${art.artist ? ` — ${art.artist}` : ""} — Meet the Met`;
-      const description = `${art.displayTitle}${art.artist ? ` by ${art.artist}` : ""}${art.date ? `, ${art.date}` : ""}. ${art.medium ?? "Collection object"} from The Metropolitan Museum of Art Open Access collection.`;
+      const description = artworkDetailMetaDescription(art);
       const ogImage = art.primaryImage ?? art.primaryImageSmall;
 
       meta.length = 0;
@@ -88,6 +90,7 @@ export const Route = createFileRoute("/art/$objectId")({
         { property: "og:type", content: "article" },
         { property: "og:title", content: title },
         { property: "og:description", content: description },
+        { name: "twitter:description", content: description },
       );
       if (ogImage) {
         meta.push({ property: "og:image", content: ogImage });
@@ -267,7 +270,7 @@ function ArtworkDetail() {
           />
           <div className="detail-image-footer">
             <p className="image-credit">
-              Image: The Metropolitan Museum of Art, Open Access
+              Image: The Metropolitan Museum of Art
             </p>
             {artwork.primaryImage || artwork.primaryImageSmall ? (
               <a
@@ -348,13 +351,9 @@ function ArtworkDetail() {
               mono
               copyable
             />
-            <MetadataRow
-              label="Rights"
-              value={
-                artwork.isPublicDomain
-                  ? "Public domain"
-                  : "Rights status not stated"
-              }
+            <ArtworkRightsMetadata
+              isPublicDomain={artwork.isPublicDomain}
+              rights={artwork.rights}
             />
           </dl>
 
@@ -758,6 +757,13 @@ function ArtworkUnavailable({
                 Met record <ArrowUpRightIcon />
               </a>
             </div>
+            <dl className="metadata-list">
+              <ArtworkRightsMetadata
+                isPublicDomain={artwork.isPublicDomain}
+                rights={artwork.rights}
+                source="saved-copy"
+              />
+            </dl>
           </div>
         </section>
       </main>

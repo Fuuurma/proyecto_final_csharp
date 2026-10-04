@@ -121,6 +121,11 @@ describe("open-access page fill", () => {
         primaryImageSmall: "https://example.com/b.jpg",
       },
       {
+        isPublicDomain: null,
+        primaryImage: "https://example.com/unknown.jpg",
+        primaryImageSmall: "https://example.com/unknown.jpg",
+      },
+      {
         isPublicDomain: true,
         primaryImage: null,
         primaryImageSmall: "https://example.com/c.jpg",

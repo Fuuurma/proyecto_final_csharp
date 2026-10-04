@@ -26,6 +26,8 @@ export type SelectionItem = Pick<
   | "primaryImage"
   | "primaryImageSmall"
   | "imageAspectRatio"
+  | "isPublicDomain"
+  | "rights"
 >;
 
 type SelectionContextValue = {
@@ -102,8 +104,8 @@ export function artworkFromSelectionItem(item: SelectionItem): Artwork {
     primaryImageSmall: item.primaryImageSmall,
     additionalImages: [],
     imageAspectRatio: selectionAspectRatio(item.imageAspectRatio),
-    isPublicDomain: true,
-    rights: null,
+    isPublicDomain: item.isPublicDomain,
+    rights: item.rights,
     creditLine: null,
     canonicalUrl: `https://www.metmuseum.org/art/collection/search/${item.id}`,
     tags: [],
@@ -119,6 +121,8 @@ export function selectionItemFromArtwork(artwork: Artwork): SelectionItem {
     primaryImage: artwork.primaryImage,
     primaryImageSmall: artwork.primaryImageSmall,
     imageAspectRatio: artwork.imageAspectRatio,
+    isPublicDomain: artwork.isPublicDomain,
+    rights: artwork.rights,
   };
 }
 
@@ -136,6 +140,9 @@ function isSelectionItem(value: unknown): value is SelectionItem {
     isNullableString(item.date) &&
     isNullableString(item.primaryImage) &&
     isNullableString(item.primaryImageSmall) &&
+    (item.isPublicDomain === null ||
+      typeof item.isPublicDomain === "boolean") &&
+    isNullableString(item.rights) &&
     typeof item.imageAspectRatio === "number" &&
     Number.isFinite(item.imageAspectRatio) &&
     item.imageAspectRatio > 0
@@ -149,6 +156,8 @@ function migrateStoredItem(value: unknown): SelectionItem | null {
   // small asset, the same fallback artworkFromSelectionItem applies.
   item.primaryImage ??= item.primaryImageSmall;
   item.imageAspectRatio = selectionAspectRatio(item.imageAspectRatio);
+  item.isPublicDomain ??= null;
+  item.rights ??= null;
   return isSelectionItem(item) ? item : null;
 }
 

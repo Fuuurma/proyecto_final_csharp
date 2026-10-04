@@ -65,4 +65,26 @@ describe("normalizeMetObject", () => {
 
     expect(artwork.imageAspectRatio).toBe(1);
   });
+
+  it.each([
+    { label: "public domain", field: true, expected: true },
+    { label: "not public domain", field: false, expected: false },
+    { label: "unknown", field: undefined, expected: null },
+  ])("preserves $label rights status", ({ field, expected }) => {
+    const artwork = normalizeMetObject({
+      objectID: 11,
+      ...(field === undefined ? {} : { isPublicDomain: field }),
+    });
+
+    expect(artwork.isPublicDomain).toBe(expected);
+  });
+
+  it("preserves supplied rights and reproduction text", () => {
+    const artwork = normalizeMetObject({
+      objectID: 12,
+      rightsAndReproduction: "© 2018 Estate of Pablo Picasso",
+    });
+
+    expect(artwork.rights).toBe("© 2018 Estate of Pablo Picasso");
+  });
 });

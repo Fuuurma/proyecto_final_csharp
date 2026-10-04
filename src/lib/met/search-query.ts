@@ -12,7 +12,7 @@ export type SearchTrigger = {
 };
 
 type OpenAccessArtwork = {
-  isPublicDomain: boolean;
+  isPublicDomain: boolean | null;
   primaryImage: string | null;
   primaryImageSmall: string | null;
 };
@@ -56,6 +56,8 @@ export function takeOpenAccessPage<T extends OpenAccessArtwork>(
   size = SEARCH_PAGE_SIZE,
 ): T[] {
   return artworks
-    .filter((artwork) => artwork.isPublicDomain && hasUsableImage(artwork))
+    .filter(
+      (artwork) => artwork.isPublicDomain === true && hasUsableImage(artwork),
+    )
     .slice(0, size);
 }
