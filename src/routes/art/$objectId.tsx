@@ -114,10 +114,12 @@ function ArtworkDetail() {
   const navigate = useNavigate();
   // grok 23:45 #3: "Open image" must target the view the user has
   // tabbed into, not always the primary image. (Hooks live above the
-  // early return — react-doctor rules-of-hooks, 09-27 re-sweep.)
-  const [openImageSrc, setOpenImageSrc] = useState<string | undefined>(
-    undefined,
-  );
+  // early return — react-doctor rules-of-hooks, 09-27 re-sweep.) The
+  // pick is stored with the id of the object it was picked under —
+  // this component survives prev/next param changes while the stage
+  // remounts to the new primary, so a bare string kept offering the
+  // previous object's image (needs-work 10-04 P1).
+  const [openImage, setOpenImage] = useState<{ forId: number; src: string }>();
 
   const artwork = result?.status === "success" ? result.artwork : null;
 
@@ -210,6 +212,11 @@ function ArtworkDetail() {
       ].filter((source): source is string => Boolean(source)),
     ),
   ];
+  // Honor the picked view only while its object is still on screen —
+  // after prev/next navigation the remounted stage shows the new
+  // primary and the stale pick must fall back with it.
+  const openImageSrc =
+    openImage?.forId === artwork.id ? openImage.src : undefined;
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
@@ -254,7 +261,9 @@ function ArtworkDetail() {
             key={objectId}
             artwork={artwork}
             imageSources={imageSources}
-            onActiveSrcChange={setOpenImageSrc}
+            onActiveSrcChange={(src) =>
+              setOpenImage({ forId: artwork.id, src })
+            }
           />
           <div className="detail-image-footer">
             <p className="image-credit">

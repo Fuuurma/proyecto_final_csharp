@@ -11,12 +11,23 @@ const src = readFileSync("src/routes/art/$objectId.tsx", "utf8");
  */
 describe("open-image footer contract", () => {
   it("routes the footer link through the stage's active source", () => {
-    expect(src).toContain("onActiveSrcChange={setOpenImageSrc}");
     expect(src).toMatch(/openImageSrc \?\?\s*\n?\s*artwork\.primaryImage/);
     // the raw-primary-only href is gone
     expect(src).not.toContain(
       'href={artwork.primaryImage ?? artwork.primaryImageSmall ?? "#"}',
     );
+  });
+
+  // needs-work 10-04 P1 (same defect as the 10-01 report): ArtworkDetail
+  // does not remount on param-only prev/next navigation, while
+  // ArtworkStage does (key={objectId}) — a bare string state kept
+  // opening the PREVIOUS object's image after the stage reset to the
+  // new primary. The reported src is stored with the id it was picked
+  // under and only honored while that object is still the one on
+  // screen.
+  it("scopes the picked view to the object it was picked under", () => {
+    expect(src).toContain("setOpenImage({ forId: artwork.id, src })");
+    expect(src).toContain("openImage?.forId === artwork.id");
   });
 
   it("the stage reports every active-source change upward", () => {
