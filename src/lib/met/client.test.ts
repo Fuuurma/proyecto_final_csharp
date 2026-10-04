@@ -271,6 +271,179 @@ describe("Met API retry", () => {
   });
 });
 
+// Prevents Met 429s from bypassing retries/stale service or returning stale
+// data indefinitely.
+describe("Met API rate limiting", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    clearMetCache();
+    resetMetCircuitBreaker();
+  });
+
+  it("honors a bounded Retry-After before retrying a 429", async () => {
+    let calls = 0;
+    const sleep = vi.fn(async (_ms: number) => {});
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("rate limited", {
+            status: 429,
+            headers: { "Retry-After": "1" },
+          })
+        : response(objectPayload(7));
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep, random: () => 0.5 } }),
+    ).resolves.toMatchObject({ id: 7 });
+    expect(calls).toBe(2);
+    expect(sleep).toHaveBeenCalledWith(1_000);
+  });
+
+  it("honors an HTTP-date Retry-After within the retry budget", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-05T00:00:00.000Z"));
+    let calls = 0;
+    const sleep = vi.fn(async (_ms: number) => {});
+    const retryAt = new Date(Date.now() + 1_000).toUTCString();
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("rate limited", {
+            status: 429,
+            headers: { "Retry-After": retryAt },
+          })
+        : response(objectPayload(71));
+    };
+
+    await expect(
+      fetchMetObject(71, { fetcher, retry: { sleep, random: () => 0.5 } }),
+    ).resolves.toMatchObject({ id: 71 });
+    expect(calls).toBe(2);
+    expect(sleep).toHaveBeenCalledWith(1_000);
+  });
+
+  it("uses bounded jitter when Retry-After is missing", async () => {
+    let calls = 0;
+    const sleep = vi.fn(async (_ms: number) => {});
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("rate limited", { status: 429 })
+        : response(objectPayload(8));
+    };
+
+    await expect(
+      fetchMetObject(8, { fetcher, retry: { sleep, random: () => 0.5 } }),
+    ).resolves.toMatchObject({ id: 8 });
+    expect(calls).toBe(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep.mock.calls[0]?.[0]).toBeLessThan(150);
+  });
+
+  it("surfaces an exhausted 429 as rate limiting even with malformed JSON", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return new Response("{ not json", { status: 429 });
+    };
+
+    await expect(
+      fetchMetObject(9, { fetcher, retry: { sleep: async () => {} } }),
+    ).rejects.toMatchObject({ kind: "rate-limit", status: 429 });
+    expect(calls).toBe(3);
+  });
+
+  it("uses recent cached search data instead of retrying beyond Retry-After", async () => {
+    vi.useFakeTimers();
+    const query = "rate-limit-stale";
+    const url = new URL(
+      "https://collectionapi.metmuseum.org/public/collection/v1.1/search",
+    );
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("q", query);
+    url.searchParams.set("hasImages", "true");
+    url.searchParams.set("isPublicDomain", "true");
+    const stale = { total: 1, objectIds: [42], preFiltered: true };
+    setCached(url.toString(), stale, 60_000);
+    vi.advanceTimersByTime(60_001);
+
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      return new Response("rate limited", {
+        status: 429,
+        headers: { "Retry-After": "120" },
+      });
+    }) as typeof fetch);
+
+    await expect(fetchMetSearchIds(query)).resolves.toEqual(stale);
+    expect(calls).toBe(1);
+  });
+
+  it("serves cached search data after exhausting 429 retries", async () => {
+    vi.useFakeTimers();
+    const query = "rate-limit-retry-stale";
+    const url = new URL(
+      "https://collectionapi.metmuseum.org/public/collection/v1.1/search",
+    );
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("q", query);
+    url.searchParams.set("hasImages", "true");
+    url.searchParams.set("isPublicDomain", "true");
+    const stale = { total: 1, objectIds: [43], preFiltered: true };
+    setCached(url.toString(), stale, 60_000);
+    vi.advanceTimersByTime(60_001);
+
+    let calls = 0;
+    const sleep = vi.fn(async (_ms: number) => {});
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      return new Response("rate limited", { status: 429 });
+    }) as typeof fetch);
+
+    await expect(
+      fetchMetSearchIds(query, { retry: { sleep, random: () => 0 } }),
+    ).resolves.toEqual(stale);
+    expect(calls).toBe(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not serve cached search data beyond the stale grace period", async () => {
+    vi.useFakeTimers();
+    const query = "expired-rate-limit-stale";
+    const url = new URL(
+      "https://collectionapi.metmuseum.org/public/collection/v1.1/search",
+    );
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("q", query);
+    url.searchParams.set("hasImages", "true");
+    url.searchParams.set("isPublicDomain", "true");
+    setCached(
+      url.toString(),
+      { total: 1, objectIds: [42], preFiltered: true },
+      60_000,
+    );
+    vi.advanceTimersByTime(11 * 60_000 + 1);
+
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      return new Response("rate limited", {
+        status: 429,
+        headers: { "Retry-After": "120" },
+      });
+    }) as typeof fetch);
+
+    await expect(fetchMetSearchIds(query)).rejects.toMatchObject({
+      kind: "rate-limit",
+      status: 429,
+    });
+    expect(calls).toBe(1);
+  });
+});
+
 describe("Met API circuit breaker", () => {
   afterEach(() => {
     vi.useRealTimers();

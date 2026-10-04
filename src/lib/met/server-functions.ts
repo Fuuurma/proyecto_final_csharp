@@ -57,8 +57,8 @@ export type CollectionSearchResult = {
   artworks: Artwork[];
   message?: string;
   /**
-   * Typed upstream failure ("timeout" | "5xx" | "4xx" | "parse") when the
-   * live Met call behind this result threw — lets the UI distinguish
+   * Typed upstream failure ("timeout" | "5xx" | "rate-limit" | "4xx" |
+   * "parse") when the live Met call behind this result threw — lets the UI
    * "Met down" from "no results" instead of reading `message`.
    */
   failure?: SearchFailureKind;
@@ -145,6 +145,8 @@ function apiErrorMessage(error: unknown, subject: string): string {
       return `The ${subject} took too long to answer. Try again in a moment.`;
     case "5xx":
       return `The ${subject} is temporarily unavailable. Try again in a moment.`;
+    case "rate-limit":
+      return `The ${subject} is temporarily rate-limited. Try again in a moment.`;
     case "4xx":
       return error.status === 404
         ? "That object is not available in the public collection right now."
@@ -352,7 +354,9 @@ export const searchCollection = createServerFn({ method: "GET" })
           ...fallback,
           status: "partial",
           message:
-            "The live Met collection is answering slowly. Showing committed works from this room.",
+            error instanceof MetApiError && error.kind === "rate-limit"
+              ? "The Met is temporarily rate-limited. Showing committed works from this room."
+              : "The live Met collection is answering slowly. Showing committed works from this room.",
           failure: searchFailureKind(error),
         };
       }

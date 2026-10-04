@@ -30,8 +30,20 @@ export function getCached<T>(key: string): T | undefined {
   return entry.value as T;
 }
 
-export function getStaleCached<T>(key: string): T | undefined {
-  return store.get(key)?.value as T | undefined;
+/**
+ * Return expired data only during the caller's bounded stale-if-error window.
+ */
+export function getStaleCached<T>(
+  key: string,
+  maxStaleAgeMs: number,
+): T | undefined {
+  const entry = store.get(key);
+  if (!entry) return undefined;
+  const agePastExpiryMs = Date.now() - entry.expiresAt;
+  if (agePastExpiryMs <= 0 || agePastExpiryMs > maxStaleAgeMs) {
+    return undefined;
+  }
+  return entry.value as T;
 }
 
 /** Evicted entries keep the isolate-local map bounded: expired entries stay

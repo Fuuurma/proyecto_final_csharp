@@ -33,6 +33,12 @@ const SEARCH_PAGE_LIMIT = 500;
 // v1.1 caps offset+limit at 10,000; the id list silently stops there.
 const SEARCH_MAX_IDS = 10_000;
 const DEFAULT_TIMEOUT_MS = 3_000;
+// A valid Retry-After above the existing per-attempt retry cap is never
+// shortened: fail fast to a recent stale result or typed rate-limit result.
+const RETRY_MAX_DELAY_MS = 1_000;
+const RATE_LIMIT_RETRY_MAX_DELAY_MS = RETRY_MAX_DELAY_MS;
+// Stale data may be used for ten minutes past its normal cache expiry.
+const STALE_IF_ERROR_GRACE_MS = 10 * 60 * 1000;
 const CIRCUIT_FAILURE_LIMIT = 3;
 const CIRCUIT_OPEN_MS = 30_000;
 let consecutiveFailures = 0;
@@ -89,14 +95,19 @@ async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
 
 // Upstream failure taxonomy: "timeout" (the request never answered),
 // "5xx" (the Met is down — a 5xx response OR a transport failure with no
-// response at all, which reads the same to a caller), "4xx" (the request
-// itself was rejected; `status` keeps 404 distinguishable), and "parse"
-// (the upstream answered with something unreadable or off-schema).
-export type MetApiErrorKind = "timeout" | "5xx" | "4xx" | "parse";
+// response at all), "rate-limit" (429), "4xx" (other rejected requests),
+// and "parse" (unreadable or off-schema success response).
+export type MetApiErrorKind =
+  | "timeout"
+  | "5xx"
+  | "rate-limit"
+  | "4xx"
+  | "parse";
 
 export class MetApiError extends Error {
   readonly kind: MetApiErrorKind;
   readonly status: number | undefined;
+  readonly retryAfterMs: number | undefined;
   /**
    * Whether another attempt could plausibly succeed: transient upstream
    * conditions only. 4xx and parse failures are deterministic, and an
@@ -109,12 +120,16 @@ export class MetApiError extends Error {
     message: string,
     status?: number,
     retryable?: boolean,
+    retryAfterMs?: number,
   ) {
     super(message);
     this.name = "MetApiError";
     this.kind = kind;
     this.status = status;
-    this.retryable = retryable ?? (kind === "timeout" || kind === "5xx");
+    this.retryAfterMs = retryAfterMs;
+    this.retryable =
+      retryable ??
+      (kind === "timeout" || kind === "5xx" || kind === "rate-limit");
   }
 }
 
@@ -124,7 +139,6 @@ function withTimeout(timeoutMs: number): AbortSignal {
 
 const RETRY_MAX_ATTEMPTS = 3; // one attempt + at most two retries
 const RETRY_BASE_DELAY_MS = 150;
-const RETRY_MAX_DELAY_MS = 1_000;
 
 export type MetRetryOptions = {
   /** Total attempts for one request — default 3 (at most two retries). */
@@ -148,6 +162,29 @@ function retryDelayMs(attempt: number, random: () => number): number {
     RETRY_BASE_DELAY_MS * 2 ** attempt,
   );
   return Math.floor(random() * ceiling);
+}
+
+function parseRetryAfter(response: Response): number | undefined {
+  const value = response.headers.get("Retry-After")?.trim();
+  if (!value) return undefined;
+
+  // RFC Retry-After permits integer delay-seconds or an HTTP date.
+  if (/^[0-9]+$/.test(value)) {
+    const delayMs = Number(value) * 1_000;
+    return Number.isFinite(delayMs) ? delayMs : Number.POSITIVE_INFINITY;
+  }
+
+  const retryAt = Date.parse(value);
+  return Number.isNaN(retryAt) ? undefined : Math.max(0, retryAt - Date.now());
+}
+
+function canServeStale(error: unknown): error is MetApiError {
+  return (
+    error instanceof MetApiError &&
+    (error.kind === "timeout" ||
+      error.kind === "5xx" ||
+      error.kind === "rate-limit")
+  );
 }
 
 async function fetchJsonOnce(
@@ -179,6 +216,18 @@ async function fetchJsonOnce(
       // No response at all — DNS, refused connection, TLS. Reads as
       // "the Met is down", the same bucket as a 5xx for the caller.
       throw new MetApiError("5xx", `The Met request failed: ${url}`);
+    }
+
+    if (response.status === 429) {
+      const retryAfterMs = parseRetryAfter(response);
+      throw new MetApiError(
+        "rate-limit",
+        "The Met API rate limited the request",
+        response.status,
+        retryAfterMs === undefined ||
+          retryAfterMs <= RATE_LIMIT_RETRY_MAX_DELAY_MS,
+        retryAfterMs,
+      );
     }
 
     if (!response.ok) {
@@ -220,7 +269,13 @@ async function fetchJson(
     } catch (error) {
       const retryable = error instanceof MetApiError && error.retryable;
       if (!retryable || attempt + 1 >= attempts) throw error;
-      await sleep(retryDelayMs(attempt, random));
+      const delayMs =
+        error instanceof MetApiError &&
+        error.kind === "rate-limit" &&
+        error.retryAfterMs !== undefined
+          ? error.retryAfterMs
+          : retryDelayMs(attempt, random);
+      await sleep(delayMs);
     }
   }
   throw new Error("unreachable");
@@ -285,13 +340,8 @@ export async function fetchMetObject(
     try {
       artwork = await loadMetObject(url, objectId, options);
     } catch (error) {
-      const stale = getStaleCached<Artwork>(url);
-      if (
-        stale &&
-        error instanceof MetApiError &&
-        (error.kind === "timeout" || error.kind === "5xx")
-      )
-        return stale;
+      const stale = getStaleCached<Artwork>(url, STALE_IF_ERROR_GRACE_MS);
+      if (stale && canServeStale(error)) return stale;
       throw error;
     }
     setCached(url, artwork, CACHE_TTL_MS.object);
@@ -344,13 +394,11 @@ export async function fetchMetDepartments(
     try {
       departments = await loadMetDepartments(url, options);
     } catch (error) {
-      const stale = getStaleCached<MetDepartment[]>(url);
-      if (
-        stale &&
-        error instanceof MetApiError &&
-        (error.kind === "timeout" || error.kind === "5xx")
-      )
-        return stale;
+      const stale = getStaleCached<MetDepartment[]>(
+        url,
+        STALE_IF_ERROR_GRACE_MS,
+      );
+      if (stale && canServeStale(error)) return stale;
       throw error;
     }
     setCached(url, departments, CACHE_TTL_MS.departments);
@@ -369,7 +417,11 @@ export const MAX_CACHED_SEARCH_IDS = 20_000;
 // while small searches degraded. One oversized slot (most recent wins,
 // bounded: a single entry cannot burst the isolate) retains the latest
 // over-bound listing purely for stale-on-error service.
-let oversizedStale: { key: string; value: MetSearchIds } | null = null;
+let oversizedStale: {
+  key: string;
+  value: MetSearchIds;
+  expiresAt: number;
+} | null = null;
 
 export type MetSearchIds = {
   total: number;
@@ -494,17 +546,15 @@ export async function fetchMetSearchIds(
     try {
       loaded = await loadMetSearchIds(cacheKey, preFiltered, options);
     } catch (error) {
-      const stale = getStaleCached<MetSearchIds>(cacheKey);
-      if (
-        stale &&
-        error instanceof MetApiError &&
-        (error.kind === "timeout" || error.kind === "5xx")
-      )
-        return stale;
+      const stale = getStaleCached<MetSearchIds>(
+        cacheKey,
+        STALE_IF_ERROR_GRACE_MS,
+      );
+      if (stale && canServeStale(error)) return stale;
       if (
         oversizedStale?.key === cacheKey &&
-        error instanceof MetApiError &&
-        (error.kind === "timeout" || error.kind === "5xx")
+        Date.now() <= oversizedStale.expiresAt + STALE_IF_ERROR_GRACE_MS &&
+        canServeStale(error)
       )
         return oversizedStale.value;
       throw error;
@@ -521,7 +571,11 @@ export async function fetchMetSearchIds(
       setCached(cacheKey, loaded, CACHE_TTL_MS.search);
       await setEdgeCached(cacheKey, loaded, EDGE_TTL_S.search);
     } else {
-      oversizedStale = { key: cacheKey, value: loaded };
+      oversizedStale = {
+        key: cacheKey,
+        value: loaded,
+        expiresAt: Date.now() + CACHE_TTL_MS.search,
+      };
     }
     return loaded;
   });

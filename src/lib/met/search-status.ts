@@ -6,8 +6,9 @@ export type CollectionSearchStatus = "empty" | "partial" | "success";
 /**
  * The upstream-failure taxonomy a loader can hand to the UI:
  * "timeout"/"5xx" mean the Met is down or unreachable (transient),
- * "4xx" means the request itself was rejected, "parse" means the
- * upstream answered with something unreadable. Distinct from the
+ * "rate-limit" means the Met asked us to slow down, "4xx" means another
+ * request rejection, and "parse" means the upstream returned unreadable data.
+ * These failure states are distinct from the
  * "empty" outcome above — an honest zero-result index — so the UI can
  * tell "Met down" apart from "no results".
  */
