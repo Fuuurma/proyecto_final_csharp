@@ -52,6 +52,28 @@ describe("Met API adapter", () => {
     ).resolves.toEqual({ total: 30, objectIds: [1, 2, 3], preFiltered: true });
   });
 
+  it("dedupes ids when the live index shifts between v1.1 pages", async () => {
+    // Pagination reads a live index: results added/removed between page
+    // fetches re-position entries, so a later page may repeat an id an
+    // earlier page returned. The merged list must not carry duplicates.
+    const pageOne = Array.from({ length: 500 }, (_, i) => i + 1); // full page
+    const pages = [
+      { total: 501, objectIDs: pageOne },
+      { total: 501, objectIDs: [500, 501] }, // 500 repeats: index shifted
+      { total: 501, objectIDs: [] },
+    ];
+    let served = 0;
+    const fetcher: typeof fetch = async () => response(pages[served++]);
+
+    // no caller `limit`: the full merged list is asserted, so a duplicate
+    // (502 entries) is distinguishable from the deduped result (501).
+    await expect(fetchMetSearchIds("shifting", { fetcher })).resolves.toEqual({
+      total: 501,
+      objectIds: [...pageOne, 501],
+      preFiltered: true,
+    });
+  });
+
   it("treats a null objectIDs list as an empty search", async () => {
     const fetcher: typeof fetch = async () =>
       response({ total: 0, objectIDs: null });
