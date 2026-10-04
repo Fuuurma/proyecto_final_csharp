@@ -124,6 +124,22 @@ function Explore() {
   // curated results (codex sol review 09-09).
   const query = (q ?? "").trim();
   const activeDepartment = department ?? "all";
+  // A departmentId arrival filters by id; when the id names one of the
+  // toggle's own rooms, press the matching chip so the filter state is
+  // visible (DESIGN.md: query/filter state is visible). Ids outside the
+  // curated rooms can't be represented by a chip — the grid label
+  // (liveDepartmentName) carries the state instead.
+  const departmentIdName =
+    departmentId !== undefined
+      ? departmentNameById(departmentId)
+      : undefined;
+  const pressedDepartment =
+    departmentIdName !== undefined &&
+    (exploreDepartmentFilters as readonly string[]).includes(departmentIdName)
+      ? departmentIdName
+      : departmentId !== undefined
+        ? undefined
+        : activeDepartment;
   const page = pageParam ?? 1;
   const activePath = curatedPaths.find((path) => path.slug === pathSlug);
   const result = Route.useLoaderData();
@@ -405,7 +421,7 @@ function Explore() {
             aria-label="Department"
             className="department-toggle-group"
             onValueChange={changeDepartment}
-            value={departmentId !== undefined ? [] : [activeDepartment]}
+            value={pressedDepartment === undefined ? [] : [pressedDepartment]}
             variant="outline"
             spacing={0}
           >
