@@ -24,7 +24,9 @@ export function SaveButton({ artwork, compact = false }: SaveButtonProps) {
       type="button"
       variant="outline"
       size={compact ? "sm" : "lg"}
-      className={`save-button ${compact ? "save-button--compact" : ""} ${saved ? "is-saved" : ""}`.trim()}
+      className={["save-button", compact && "save-button--compact", saved && "is-saved"]
+        .filter(Boolean)
+        .join(" ")}
       aria-pressed={saved}
       // The gate is load-bearing: pre-hydration `saved` is always
       // false, so dropping it would invert a stored artwork's
