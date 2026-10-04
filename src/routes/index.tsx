@@ -128,10 +128,13 @@ function Home() {
               className={`home-gallery__item home-gallery__item--${index + 1}`}
               key={artwork.id}
             >
+              {/* Decorative duplicate of the title link below. */}
               <Link
                 to="/art/$objectId"
                 params={{ objectId: String(artwork.id) }}
                 className="home-gallery__image-link"
+                aria-hidden="true"
+                tabIndex={-1}
               >
                 <ArtworkImage artwork={artwork} />
               </Link>
@@ -147,7 +150,7 @@ function Home() {
                     {artwork.displayTitle}
                   </Link>
                 </h3>
-                <span className="mono">
+                <span className="home-gallery__artist">
                   {artwork.artist ?? "Artist unknown"}
                 </span>
               </div>
@@ -184,6 +187,7 @@ function Home() {
                 className={`path-card path-card--${index + 1}`}
                 key={path.title}
               >
+                {/* Decorative duplicate of the path link below. */}
                 <Link
                   to="/explore"
                   search={{
@@ -191,6 +195,8 @@ function Home() {
                     department: undefined,
                   }}
                   className="path-card__image-link"
+                  aria-hidden="true"
+                  tabIndex={-1}
                 >
                   <ArtworkImage artwork={artwork} />
                 </Link>
