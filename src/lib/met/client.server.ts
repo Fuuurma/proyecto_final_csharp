@@ -386,6 +386,7 @@ async function loadMetSearchIds(
   // unchanged). Stops on a partial page, on reaching the reported total,
   // or at the upstream 10,000-id cap.
   const ids: number[] = []
+  const seen = new Set<number>()
   let total = 0
   let offset = 0
   for (;;) {
@@ -408,7 +409,15 @@ async function loadMetSearchIds(
 
     total = parsed.data.total
     const page = parsed.data.objectIDs ?? []
-    ids.push(...page)
+    // The index can shift between page fetches (results added/removed
+    // mid-pagination re-position entries), so a page may repeat an id an
+    // earlier page returned. Callers must never see a duplicate.
+    for (const id of page) {
+      if (!seen.has(id)) {
+        seen.add(id)
+        ids.push(id)
+      }
+    }
     offset += page.length
     if (page.length < SEARCH_PAGE_LIMIT) break
     if (ids.length >= total) break
