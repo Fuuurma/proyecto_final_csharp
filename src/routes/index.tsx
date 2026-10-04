@@ -75,9 +75,9 @@ function Home() {
             <em> made legible.</em>
           </h1>
           <p className="hero__lede">
-            Meet the Met is a quiet place to look closer: a living index of
-            public-domain works, their makers, and the details that keep them in
-            view.
+            Meet the Met is a quiet place to look closer: a committed review set
+            of public-domain works, their makers, and the details that keep them
+            in view.
           </p>
           <div className="hero__actions">
             <Link
@@ -137,7 +137,7 @@ function Home() {
               </Link>
               <div className="home-gallery__caption">
                 <span className="home-gallery__classification mono">
-                  {artwork.classification ?? "Collection object"}
+                  {artwork.classification ?? "Unclassified"}
                 </span>
                 <h3>
                   <Link
@@ -247,11 +247,11 @@ function Home() {
               >
                 <ArtworkImage artwork={artwork} />
                 <div className="collection-index__meta">
-                  <span className="mono">{count} review works</span>
+                  <span className="mono">{count} in the review set</span>
                   <h3>{department.name}</h3>
                   <p>{department.description}</p>
                   <span className="link-action">
-                    Open department <span aria-hidden="true">→</span>
+                    Open live department <span aria-hidden="true">→</span>
                   </span>
                 </div>
               </Link>

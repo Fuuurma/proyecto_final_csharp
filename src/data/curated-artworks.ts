@@ -978,6 +978,10 @@ export const aboutSourceArtwork: Artwork | undefined = curatedArtworks.find(
   (artwork) => artwork.id === 56353,
 );
 
+/* Order is load-bearing: each position maps to a hand-tuned CSS grid slot
+ * (.home-gallery__item--1..12 in styles.css — spans + editorial offsets).
+ * Reordering reshuffles the wall; adding/removing requires a stylesheet
+ * slot in step (pinned by home-gallery.test.ts). */
 export const homeGalleryIds = [
   436880, 56353, 436964, 283626, 345033, 55176, 437999, 436536, 438009, 436155,
   435877, 441104,

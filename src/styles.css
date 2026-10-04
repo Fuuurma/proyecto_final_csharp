@@ -336,7 +336,7 @@ img {
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
   gap: clamp(2rem, 5vw, 5.5rem);
   align-items: center;
-  min-height: min(780px, calc(100dvh - 76px));
+  min-height: min(780px, calc(100dvh - var(--header-h)));
   padding-block: 1.75rem 3.5rem;
 }
 
@@ -1153,12 +1153,8 @@ img {
   opacity: 1;
 }
 
-.artwork-card:hover .artwork-image img,
-.home-gallery__item:hover .artwork-image img,
-.path-card:hover .artwork-image img,
-.collection-index__item:hover .artwork-image img {
-  transform: scale(1.02);
-}
+/* Archive stillness: artwork images do not zoom on hover — the queued
+   direction was "scale(1.02) → none" (head item, resolved). */
 
 .artwork-image__missing {
   display: flex;
@@ -1442,8 +1438,10 @@ img {
 }
 
 .department-toggle-group [data-slot="toggle-group-item"][aria-pressed="true"] {
-  border-color: var(--ink);
-  background: var(--ink);
+  /* DESIGN.md:30 — museum red is the one controlled accent for active
+     state / selection feedback; white on #b3322f = 6.15:1 (AA). */
+  border-color: var(--red);
+  background: var(--red);
   color: var(--white);
 }
 
@@ -1910,7 +1908,8 @@ img {
 }
 
 .detail-page__topline .link-action {
-  border: 0;
+  /* Keep the base underline: without it the back-link read as a
+     breadcrumb separator, not a link (grok 09-12 05:45). */
   color: var(--archive);
   font-weight: 400;
 }
@@ -1968,6 +1967,15 @@ img {
 .detail-image-trigger:focus-visible .detail-image-hint {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* Touch inputs have no hover — the Inspect affordance stays visible
+   there instead of existing only mid-hover (head item, resolved). */
+@media (hover: none) {
+  .detail-image-hint {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .image-dialog-content {
