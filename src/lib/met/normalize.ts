@@ -41,7 +41,8 @@ function getImageAspectRatio(payload: MetObjectPayload): number {
     return 1;
   }
 
-  return width / height;
+  const ratio = width / height;
+  return Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
 }
 
 function getArtist(payload: MetObjectPayload): string | null {
