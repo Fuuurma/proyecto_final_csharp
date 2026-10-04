@@ -32,6 +32,15 @@ function ToggleGroup({
     spacing?: number;
     orientation?: "horizontal" | "vertical";
   }) {
+  // A fresh object every render re-renders every ToggleGroupItem even
+  // when the carried props stand still (react-doctor
+  // jsx-no-constructed-context-values, 10-04). Memoized like the
+  // SelectionContext value in lib/selection.tsx.
+  const contextValue = React.useMemo(
+    () => ({ variant, size, spacing, orientation }),
+    [variant, size, spacing, orientation],
+  );
+
   return (
     <ToggleGroupPrimitive
       data-slot="toggle-group"
@@ -46,9 +55,7 @@ function ToggleGroup({
       )}
       {...props}
     >
-      <ToggleGroupContext.Provider
-        value={{ variant, size, spacing, orientation }}
-      >
+      <ToggleGroupContext.Provider value={contextValue}>
         {children}
       </ToggleGroupContext.Provider>
     </ToggleGroupPrimitive>
