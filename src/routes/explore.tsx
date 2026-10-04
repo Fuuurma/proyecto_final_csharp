@@ -419,7 +419,6 @@ function Explore() {
           <legend className="eyebrow">Department</legend>
           <ToggleGroup
             aria-label="Department"
-            className="department-toggle-group"
             onValueChange={changeDepartment}
             value={pressedDepartment === undefined ? [] : [pressedDepartment]}
             variant="outline"
