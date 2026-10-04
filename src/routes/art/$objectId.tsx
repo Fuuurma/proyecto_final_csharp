@@ -602,6 +602,11 @@ function ArtworkStage({
             }
             if (next !== null) {
               event.preventDefault();
+              // The tablist owns these keys — without this the same
+              // keydown kept bubbling to the window-level prev/next
+              // artwork shortcut and navigated off the record
+              // (needs-work 09-27 P1; grok 01:45 #1).
+              event.stopPropagation();
               setActiveSrc(imageSources[next]);
               document.getElementById(`view-tab-${next}`)?.focus();
             }
