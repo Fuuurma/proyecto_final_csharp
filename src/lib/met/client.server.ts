@@ -27,7 +27,8 @@ const API_ROOT = "https://collectionapi.metmuseum.org/public/collection/v1";
 // Search moved to v1.1: upstream retired /v1/search on 2026-10-01 (live-
 // verified 410 Gone on 10-04). /objects and /objects/{id} remain on v1
 // (live-verified 200 — different endpoints, untouched by the retirement).
-const SEARCH_API_ROOT = "https://collectionapi.metmuseum.org/public/collection/v1.1";
+const SEARCH_API_ROOT =
+  "https://collectionapi.metmuseum.org/public/collection/v1.1";
 const SEARCH_PAGE_LIMIT = 500;
 // v1.1 caps offset+limit at 10,000; the id list silently stops there.
 const SEARCH_MAX_IDS = 10_000;
@@ -385,50 +386,50 @@ async function loadMetSearchIds(
   // (the cache key is the page-less URL, so the cache contract is
   // unchanged). Stops on a partial page, on reaching the reported total,
   // or at the upstream 10,000-id cap.
-  const ids: number[] = []
-  const seen = new Set<number>()
-  let total = 0
-  let offset = 0
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  let total = 0;
+  let offset = 0;
   for (;;) {
-    const pageUrl = new URL(cacheKey)
-    pageUrl.searchParams.set("offset", String(offset))
+    const pageUrl = new URL(cacheKey);
+    pageUrl.searchParams.set("offset", String(offset));
     const payload = await fetchJson(
       pageUrl.toString(),
       options.fetcher ?? fetch,
       options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       options.retry,
-    )
-    const parsed = metSearchSchema.safeParse(payload)
+    );
+    const parsed = metSearchSchema.safeParse(payload);
 
     if (!parsed.success) {
       throw new MetApiError(
         "parse",
         "The Met search response did not match the expected shape",
-      )
+      );
     }
 
-    total = parsed.data.total
-    const page = parsed.data.objectIDs ?? []
+    total = parsed.data.total;
+    const page = parsed.data.objectIDs ?? [];
     // The index can shift between page fetches (results added/removed
     // mid-pagination re-position entries), so a page may repeat an id an
     // earlier page returned. Callers must never see a duplicate.
     for (const id of page) {
       if (!seen.has(id)) {
-        seen.add(id)
-        ids.push(id)
+        seen.add(id);
+        ids.push(id);
       }
     }
-    offset += page.length
-    if (page.length < SEARCH_PAGE_LIMIT) break
-    if (ids.length >= total) break
-    if (offset >= SEARCH_MAX_IDS) break
+    offset += page.length;
+    if (page.length < SEARCH_PAGE_LIMIT) break;
+    if (ids.length >= total) break;
+    if (offset >= SEARCH_MAX_IDS) break;
   }
 
   return {
     total,
     objectIds: ids,
     preFiltered,
-  }
+  };
 }
 
 export async function fetchMetSearchIds(

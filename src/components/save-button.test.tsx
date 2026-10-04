@@ -1,18 +1,24 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import type { Artwork } from "@/lib/met/normalize";
-import { SelectionProvider } from "@/lib/selection";
+import { SelectionProvider, STORAGE_KEY } from "@/lib/selection";
 import { SaveButton } from "./save-button";
 
 const artwork = {
   id: 1,
   title: "Probe",
+  displayTitle: "Probe",
   primaryImage: null,
   primaryImageSmall: null,
 } as unknown as Artwork;
+
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 /**
  * needs-work 09-26 P2 (grok 23:45 #2, audited 00:3x): the hydration
@@ -43,5 +49,52 @@ describe("save-button hydration state", () => {
     const src = readFileSync(join(__dirname, "save-button.tsx"), "utf8");
     expect(src).toContain("aria-busy={!isHydrated}");
     expect(src).toContain("disabled={!isHydrated}");
+  });
+});
+
+/**
+ * review 10-04 13:02 #1 (P2): the hydration pin never rendered the saved
+ * state, so the is-saved → aria-pressed selector swap carried zero
+ * assertions — a dead selector would still pass. Render a preloaded
+ * selection and pin both halves of the hook: the DOM attribute and the
+ * stylesheet selector keyed on it.
+ */
+describe("save-button saved state", () => {
+  it("marks a stored artwork as pressed, with no is-saved class", () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        items: [
+          {
+            id: artwork.id,
+            displayTitle: artwork.displayTitle,
+            artist: null,
+            date: null,
+            primaryImage: null,
+            primaryImageSmall: null,
+            imageAspectRatio: 1,
+          },
+        ],
+      }),
+    );
+    render(
+      <SelectionProvider>
+        <SaveButton artwork={artwork} />
+      </SelectionProvider>,
+    );
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.getAttribute("aria-label")).toBe(
+      "Remove Probe from your selection",
+    );
+    expect(button.className).toContain("save-button");
+    expect(button.className).not.toContain("is-saved");
+  });
+
+  it("drives the saved style via the aria-pressed hook (source pin)", () => {
+    const css = readFileSync(join(__dirname, "..", "styles.css"), "utf8");
+    expect(css).toContain('.save-button[aria-pressed="true"]');
+    expect(css).not.toContain("is-saved");
   });
 });

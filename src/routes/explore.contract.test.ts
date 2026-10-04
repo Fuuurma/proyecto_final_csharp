@@ -61,7 +61,9 @@ describe("explore department filter visibility (grok 01:45 P2)", () => {
     );
     // The old expression rendered an empty value for departmentId
     // arrivals — a filtered grid with no visible filter state.
-    expect(src).not.toContain("departmentId !== undefined ? [] : [activeDepartment]");
+    expect(src).not.toContain(
+      "departmentId !== undefined ? [] : [activeDepartment]",
+    );
     // The pressed chip must come from the id-resolved name, gated on the
     // curated filter list so out-of-list ids fall back to the label.
     expect(src).toContain("const pressedDepartment =");

@@ -130,9 +130,7 @@ function Explore() {
   // curated rooms can't be represented by a chip — the grid label
   // (liveDepartmentName) carries the state instead.
   const departmentIdName =
-    departmentId !== undefined
-      ? departmentNameById(departmentId)
-      : undefined;
+    departmentId !== undefined ? departmentNameById(departmentId) : undefined;
   const pressedDepartment =
     departmentIdName !== undefined &&
     (exploreDepartmentFilters as readonly string[]).includes(departmentIdName)

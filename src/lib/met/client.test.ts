@@ -67,9 +67,7 @@ describe("Met API adapter", () => {
 
     // no caller `limit`: the full merged list is asserted, so a duplicate
     // (502 entries) is distinguishable from the deduped result (501).
-    await expect(
-      fetchMetSearchIds("shifting", { fetcher }),
-    ).resolves.toEqual({
+    await expect(fetchMetSearchIds("shifting", { fetcher })).resolves.toEqual({
       total: 501,
       objectIds: [...pageOne, 501],
       preFiltered: true,
