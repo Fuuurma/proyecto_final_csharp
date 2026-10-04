@@ -24,6 +24,13 @@ export {
 } from "./search-query";
 
 const API_ROOT = "https://collectionapi.metmuseum.org/public/collection/v1";
+// Search moved to v1.1: upstream retired /v1/search on 2026-10-01 (live-
+// verified 410 Gone on 10-04). /objects and /objects/{id} remain on v1
+// (live-verified 200 — different endpoints, untouched by the retirement).
+const SEARCH_API_ROOT = "https://collectionapi.metmuseum.org/public/collection/v1.1";
+const SEARCH_PAGE_LIMIT = 500;
+// v1.1 caps offset+limit at 10,000; the id list silently stops there.
+const SEARCH_MAX_IDS = 10_000;
 const DEFAULT_TIMEOUT_MS = 3_000;
 const CIRCUIT_FAILURE_LIMIT = 3;
 const CIRCUIT_OPEN_MS = 30_000;
@@ -374,26 +381,45 @@ async function loadMetSearchIds(
   preFiltered: boolean,
   options: MetRequestOptions,
 ): Promise<MetSearchIds> {
-  const payload = await fetchJson(
-    cacheKey,
-    options.fetcher ?? fetch,
-    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    options.retry,
-  );
-  const parsed = metSearchSchema.safeParse(payload);
+  // v1.1 paginates; callers still get one merged, single-shot id list
+  // (the cache key is the page-less URL, so the cache contract is
+  // unchanged). Stops on a partial page, on reaching the reported total,
+  // or at the upstream 10,000-id cap.
+  const ids: number[] = []
+  let total = 0
+  let offset = 0
+  for (;;) {
+    const pageUrl = new URL(cacheKey)
+    pageUrl.searchParams.set("offset", String(offset))
+    const payload = await fetchJson(
+      pageUrl.toString(),
+      options.fetcher ?? fetch,
+      options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      options.retry,
+    )
+    const parsed = metSearchSchema.safeParse(payload)
 
-  if (!parsed.success) {
-    throw new MetApiError(
-      "parse",
-      "The Met search response did not match the expected shape",
-    );
+    if (!parsed.success) {
+      throw new MetApiError(
+        "parse",
+        "The Met search response did not match the expected shape",
+      )
+    }
+
+    total = parsed.data.total
+    const page = parsed.data.objectIDs ?? []
+    ids.push(...page)
+    offset += page.length
+    if (page.length < SEARCH_PAGE_LIMIT) break
+    if (ids.length >= total) break
+    if (offset >= SEARCH_MAX_IDS) break
   }
 
   return {
-    total: parsed.data.total,
-    objectIds: parsed.data.objectIDs ?? [],
+    total,
+    objectIds: ids,
     preFiltered,
-  };
+  }
 }
 
 export async function fetchMetSearchIds(
@@ -422,7 +448,8 @@ export async function fetchMetSearchIds(
     url.searchParams.set("isPublicDomain", "true");
     preFiltered = false;
   } else {
-    url = new URL(`${API_ROOT}/search`);
+    url = new URL(`${SEARCH_API_ROOT}/search`);
+    url.searchParams.set("limit", String(SEARCH_PAGE_LIMIT));
     url.searchParams.set("q", trimmed.length > 0 ? trimmed : "*");
     url.searchParams.set("hasImages", "true");
     url.searchParams.set("isPublicDomain", "true");
