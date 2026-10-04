@@ -3,7 +3,7 @@
   "jsPlugins": ["@shadcn/lint"],
   "settings": {
     "shadcn": {
-      "note": "See DESIGN.md — semantic tokens only, museum-quiet editorial chrome. Theme lives in src/styles.css. Landing (src/routes/index.tsx) is art-directed: arbitrary values allowed there only."
+      "note": "See DESIGN.md — semantic tokens only, museum-quiet editorial chrome. Theme lives in src/styles.css. Landing (src/routes/index.tsx) is art-directed: arbitrary values allowed there only. Page-scoped hook classes are defined in src/styles.css and allowlisted per component below."
     }
   },
   "rules": {
@@ -26,7 +26,62 @@
           },
           {
             "pattern": "^Badge$|^Alert(Description|Title)?$|^Empty",
-            "allow": ["layout", "spacing", "typography", "color"]
+            "allow": [
+              "layout",
+              "spacing",
+              "typography",
+              "color",
+              "result-alert",
+              "local-record-alert"
+            ]
+          },
+          {
+            "pattern": "^Button$",
+            "allow": [
+              "layout",
+              "spacing",
+              "typography",
+              "button-quiet",
+              "icon-button",
+              "record-link",
+              "load-more",
+              "save-button",
+              "save-button--compact"
+            ]
+          },
+          {
+            "pattern": "^Skeleton$",
+            "allow": [
+              "layout",
+              "spacing",
+              "typography",
+              "artwork-skeleton__*",
+              "detail-loading__*",
+              "selection-status__*"
+            ]
+          },
+          {
+            "pattern": "^Field(Group)?$",
+            "allow": [
+              "layout",
+              "spacing",
+              "typography",
+              "search-field",
+              "search-field-*"
+            ]
+          },
+          {
+            "pattern": "^Separator$",
+            "allow": [
+              "layout",
+              "spacing",
+              "typography",
+              "detail-actions-separator"
+            ]
+          },
+          {
+            "pattern": "^Dialog(Content|Title|Description|Close)$",
+            "allow": ["layout", "spacing", "typography", "image-dialog-*"]
           }
         ]
       }

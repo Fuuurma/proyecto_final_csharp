@@ -1210,7 +1210,7 @@ img {
 }
 
 .save-button:hover,
-.save-button.is-saved {
+.save-button[aria-pressed="true"] {
   border-color: var(--red);
   color: var(--red);
 }
@@ -1219,7 +1219,7 @@ img {
   transform: scale(0.97);
 }
 
-.save-button.is-saved {
+.save-button[aria-pressed="true"] {
   background: color-mix(in srgb, var(--red) 10%, transparent);
 }
 
