@@ -4,7 +4,14 @@ import {
   notFound,
   useNavigate,
 } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
 import { DetailSkeleton } from "@/components/detail-skeleton";
@@ -28,6 +35,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { curatedArtworks } from "@/data/curated-artworks";
 import { isReviewDepartmentName } from "@/data/departments";
 import {
@@ -631,22 +639,63 @@ function ArtworkStage({
 
 function ImageLightboxStage({ src, alt }: { src: string; alt: string }) {
   const [zoomed, setZoomed] = useState(false);
+  const stageRef = useRef<HTMLElement>(null);
+  const stageId = useId();
+  const hintId = useId();
+
+  function changeScale(enlarge: boolean) {
+    setZoomed(enlarge);
+    stageRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }
 
   return (
-    <div className={cn("image-dialog-stage", zoomed && "is-zoomed")}>
-      <button
-        type="button"
-        className="image-dialog-stage__trigger"
-        onClick={() => setZoomed(!zoomed)}
-        aria-label={
-          zoomed
-            ? "Zoomed view. Click to fit to screen."
-            : "Fit view. Click to zoom in."
-        }
-        aria-pressed={zoomed}
+    <div className="image-inspector">
+      <div className="image-inspector__controls">
+        <ToggleGroup
+          value={[zoomed ? "enlarge" : "fit"]}
+          onValueChange={(value) => {
+            if (value.length > 0) changeScale(value[0] === "enlarge");
+          }}
+          variant="outline"
+          spacing={0}
+          className="image-inspector__scale"
+          aria-label="Image scale"
+        >
+          <ToggleGroupItem value="fit" aria-controls={stageId}>
+            Fit image
+          </ToggleGroupItem>
+          <ToggleGroupItem value="enlarge" aria-controls={stageId}>
+            Enlarge
+          </ToggleGroupItem>
+        </ToggleGroup>
+        <p id={hintId} className="image-inspector__hint">
+          {zoomed
+            ? "Scroll to look closer. Focus the image area to use arrow keys."
+            : "The whole image. Enlarge for a closer look."}
+        </p>
+      </div>
+      <section
+        id={stageId}
+        ref={stageRef}
+        className={cn("image-dialog-stage", zoomed && "is-zoomed")}
+        aria-label="Artwork image"
+        aria-describedby={hintId}
+        tabIndex={zoomed ? 0 : -1}
       >
-        <img src={src} alt={alt} className="image-dialog-asset" />
-      </button>
+        <button
+          type="button"
+          className="image-dialog-stage__trigger"
+          onClick={() => changeScale(!zoomed)}
+          aria-label={
+            zoomed
+              ? "Zoomed view. Click to fit to screen."
+              : "Fit view. Click to zoom in."
+          }
+          aria-pressed={zoomed}
+        >
+          <img src={src} alt={alt} className="image-dialog-asset" />
+        </button>
+      </section>
     </div>
   );
 }

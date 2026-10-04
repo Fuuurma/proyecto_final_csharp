@@ -24,7 +24,11 @@ export function SaveButton({ artwork, compact = false }: SaveButtonProps) {
       type="button"
       variant="outline"
       size={compact ? "sm" : "lg"}
-      className={["save-button", compact && "save-button--compact", saved && "is-saved"]
+      className={[
+        "save-button",
+        compact && "save-button--compact",
+        saved && "is-saved",
+      ]
         .filter(Boolean)
         .join(" ")}
       aria-pressed={saved}
