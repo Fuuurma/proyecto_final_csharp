@@ -1630,10 +1630,6 @@ img {
   min-width: 0;
 }
 
-.artwork-skeleton__image {
-  width: 100%;
-}
-
 .artwork-skeleton__line {
   width: 48%;
   height: 0.6rem;

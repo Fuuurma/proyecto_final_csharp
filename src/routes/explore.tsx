@@ -698,7 +698,7 @@ function ExplorePending() {
           {[1, 2, 3, 4, 5, 6].map((index) => (
             <div className="artwork-skeleton" key={index}>
               <Skeleton
-                className="artwork-skeleton__image aspect-(--skel-ratio)"
+                className="aspect-(--skel-ratio) w-full"
                 style={
                   {
                     "--skel-ratio": index % 3 === 0 ? "0.78" : "1.12",
