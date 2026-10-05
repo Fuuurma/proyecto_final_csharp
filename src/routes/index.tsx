@@ -252,7 +252,7 @@ function Home() {
             <ReviewDepartmentCard department={department} key={department.id} />
           ))}
         </div>
-        <div className="home-gallery__footer">
+        <div className="collection-index__footer">
           <span className="mono">The rest of the museum rooms</span>
           <Link to="/departments" className="link-action">
             Open the department index <span aria-hidden="true">→</span>

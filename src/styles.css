@@ -720,7 +720,8 @@ img {
   font-size: 0.85rem;
 }
 
-.home-gallery__footer {
+.home-gallery__footer,
+.collection-index__footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1563,11 +1564,12 @@ img {
 }
 
 .path-chip {
+  /* Chips are controls, not display moments — sans face; the serif italic
+     is reserved for titles (grok 09-19). */
   color: var(--archive);
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 14px;
-  font-style: italic;
-  letter-spacing: -0.02em;
+  font-weight: 500;
   border-bottom: 1px solid transparent;
 }
 
@@ -3138,7 +3140,8 @@ body:has(.selection-tray.is-collapsed) {
     font-size: clamp(1.15rem, 4.5vw, 1.45rem);
   }
 
-  .home-gallery__footer {
+  .home-gallery__footer,
+  .collection-index__footer {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.75rem;
