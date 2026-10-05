@@ -1045,6 +1045,14 @@ img {
   background: var(--image-field);
 }
 
+/* The seeded source object can leave the index — keep the slot honest
+   instead of vanishing (review 09-19 P2). */
+.about-hero__image--empty {
+  display: flex;
+  min-height: 16rem;
+  align-items: end;
+}
+
 .about-hero__image figcaption {
   display: flex;
   justify-content: space-between;

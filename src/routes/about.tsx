@@ -61,7 +61,14 @@ function About() {
               </span>
             </figcaption>
           </figure>
-        ) : null}
+        ) : (
+          <figure className="about-hero__image about-hero__image--empty">
+            <figcaption>
+              <span className="mono">Source object</span>
+              <span>The seeded record is not in the current index.</span>
+            </figcaption>
+          </figure>
+        )}
       </section>
 
       <div className="about-page__columns">

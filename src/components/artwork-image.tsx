@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { rememberArtworkRatio } from "@/lib/artwork-ratio-cache";
 import type { Artwork } from "@/lib/met/normalize";
 
 type ArtworkImageProps = {
@@ -53,6 +54,12 @@ export function ArtworkImage({
   const source = sources.find((candidate) => !failedSet.has(candidate));
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+
+  // Any rendered surface knows the true ratio — record it so the detail
+  // pending skeleton can adopt it on client-side arrivals (grok 10-01).
+  useLayoutEffect(() => {
+    rememberArtworkRatio(artwork.id, artwork.imageAspectRatio);
+  }, [artwork.id, artwork.imageAspectRatio]);
 
   // A cached image can finish before React attaches onLoad (SSR
   // hydration race) — then it would sit hidden behind is-loading
