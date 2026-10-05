@@ -58,7 +58,6 @@ function About() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(sourceArtwork.id) }}
-              className="about-hero__image-link"
             >
               <ArtworkImage artwork={sourceArtwork} size="large" eager />
             </Link>

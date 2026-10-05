@@ -71,6 +71,15 @@
             ]
           },
           {
+            "pattern": "^ToggleGroup$",
+            "allow": [
+              "layout",
+              "spacing",
+              "typography",
+              "image-inspector__scale"
+            ]
+          },
+          {
             "pattern": "^Separator$",
             "allow": [
               "layout",
