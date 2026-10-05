@@ -293,6 +293,62 @@ test("A broad Explore search can load another page of the index", async ({
   expect(after).toBeGreaterThan(SEARCH_PAGE_SIZE);
 });
 
+// Regression: a stale path must not suppress the selected page of live results.
+test("Explore restores live pages through stale paths, filters, and browser history", async ({
+  page,
+}) => {
+  await page.goto("/explore?q=e&path=stale-room&page=2");
+  await expect(page.getByRole("heading", { name: "“e”" })).toBeVisible();
+  await expect
+    .poll(() => page.locator(".artwork-card").count())
+    .toBeGreaterThan(SEARCH_PAGE_SIZE);
+
+  // A new department filter clears the stale path and selected page while
+  // keeping the live query; browser back restores the shareable prior state.
+  await page.getByRole("button", { name: "Asian Art", exact: true }).click();
+  await expect
+    .poll(() => {
+      const search = new URL(page.url()).searchParams;
+      return {
+        q: search.get("q"),
+        department: search.get("department"),
+        path: search.get("path"),
+        page: search.get("page"),
+      };
+    })
+    .toEqual({ q: "e", department: "Asian Art", path: null, page: null });
+
+  await page.goBack();
+  await expect
+    .poll(() => {
+      const search = new URL(page.url()).searchParams;
+      return [search.get("q"), search.get("path"), search.get("page")];
+    })
+    .toEqual(["e", "stale-room", "2"]);
+  await expect
+    .poll(() => page.locator(".artwork-card").count())
+    .toBeGreaterThan(SEARCH_PAGE_SIZE);
+
+  // Department-only page 2 is empty in this fixture, so the prior page must
+  // be restored even though an unrelated path slug remains in the URL.
+  await page.goto("/explore?department=Asian%20Art&path=stale-room&page=2");
+  await expect(page.getByRole("heading", { name: "Asian Art" })).toBeVisible();
+  await expect(page.locator(".artwork-card")).toHaveCount(6);
+  await expect(page.locator(".explore-count")).toHaveText("6 / 6 review works");
+
+  // A recognized curated path still owns its own ordered three-work set.
+  await page.goto("/explore?path=van-gogh-late-light&page=2");
+  await expect(
+    page.getByRole("heading", { name: "Van Gogh / late light" }),
+  ).toBeVisible();
+  await expect(page.locator(".artwork-card")).toHaveCount(3);
+  await expect(
+    page
+      .locator(".path-chip-row")
+      .getByRole("link", { name: "Van Gogh / late light", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+});
+
 test("Departments index opens a review room and a live department", async ({
   page,
 }) => {
