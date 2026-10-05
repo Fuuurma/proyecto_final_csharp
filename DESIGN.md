@@ -90,6 +90,9 @@ distinctive italic and numeral forms.
 - Link clearly to the canonical Met record.
 - Related navigation follows real metadata, not invented recommendations.
 - Previous and next movement stays bounded to the committed review set.
+- The image inspector exposes Fit image / Enlarge controls and a keyboard
+  scrolling cue. Enlarged artwork starts at the scroll origin; no part of the
+  source image may be clipped above an unreachable centered overflow area.
 
 ### Selection
 
