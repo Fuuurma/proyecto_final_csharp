@@ -19,6 +19,9 @@
   --focus-ring: var(--ink);
   --focus-ring-on-dark: var(--white);
   --image-field: #171815;
+  /* Muted text on the dark image field (credits, subtitles) — must not
+     compete with the artwork; ~7.4:1 on #171815. */
+  --on-image-field-muted: #9aa09a;
   --white: #fffefa;
   --serif: "Newsreader Variable", "Newsreader", Georgia, serif;
   --sans: "DM Sans Variable", "DM Sans", Helvetica, Arial, sans-serif;
@@ -264,7 +267,7 @@ img {
 
 .wordmark__sub {
   padding-left: 17px;
-  color: var(--red);
+  color: var(--ink);
   font-size: 16px;
   font-style: italic;
   letter-spacing: -0.02em;
@@ -1458,8 +1461,8 @@ img {
 }
 
 .filter-group [data-slot="toggle-group-item"][aria-pressed="true"] {
-  border-color: var(--ink);
-  background: var(--ink);
+  border-color: var(--red);
+  background: var(--red);
   color: var(--white);
 }
 
@@ -1733,10 +1736,7 @@ img {
   justify-content: space-between;
   gap: 1rem;
   color: var(--archive);
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  font-size: 12px;
 }
 
 .artwork-card__line span:last-child {
@@ -2118,10 +2118,8 @@ img {
 
 .image-dialog-credit {
   margin: 0;
-  color: #9aa09a;
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  color: var(--on-image-field-muted);
+  font-size: 12px;
 }
 
 .detail-image-field .artwork-image {
@@ -2145,10 +2143,7 @@ img {
 .image-credit {
   margin: 0.75rem 0 0;
   color: var(--archive);
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  font-size: 12px;
 }
 
 .detail-copy {

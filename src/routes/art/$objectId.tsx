@@ -585,7 +585,7 @@ function ArtworkStage({
               alt={`${artwork.displayTitle}${artwork.artist ? `, ${artwork.artist}` : ""}`}
             />
             {artwork.creditLine ? (
-              <p className="image-dialog-credit mono">{artwork.creditLine}</p>
+              <p className="image-dialog-credit">{artwork.creditLine}</p>
             ) : null}
           </div>
         </DialogContent>

@@ -29,13 +29,27 @@ export function ArtworkCard({ artwork, seq }: ArtworkCardProps) {
       <div className="artwork-card__meta">
         <div className="artwork-card__meta-main">
           <div className="artwork-card__line">
-            {/* The line's CSS ellipsizes these spans at 9px — the title
+            {/* The line's CSS ellipsizes these spans — the title
                 attribute keeps the full value one hover away (the text
-                itself is already complete for screen readers). */}
-            <span title={artwork.date ?? "Date unknown"}>
+                itself is already complete for screen readers). Missing
+                metadata takes the italic record-absence treatment so
+                "unknown" never reads as data (grok 10-05 #12). */}
+            <span
+              className={
+                artwork.date === null ? "metadata-row__missing" : undefined
+              }
+              title={artwork.date ?? "Date unknown"}
+            >
               {artwork.date ?? "Date unknown"}
             </span>
-            <span title={artwork.department ?? "Department unknown"}>
+            <span
+              className={
+                artwork.department === null
+                  ? "metadata-row__missing"
+                  : undefined
+              }
+              title={artwork.department ?? "Department unknown"}
+            >
               {artwork.department ?? "Department unknown"}
             </span>
           </div>
@@ -48,7 +62,13 @@ export function ArtworkCard({ artwork, seq }: ArtworkCardProps) {
               {artwork.displayTitle}
             </Link>
           </h3>
-          <p>{artwork.artist ?? "Artist unknown"}</p>
+          <p
+            className={
+              artwork.artist === null ? "metadata-row__missing" : undefined
+            }
+          >
+            {artwork.artist ?? "Artist unknown"}
+          </p>
         </div>
         <div className="artwork-card__actions">
           <SaveButton artwork={artwork} compact />

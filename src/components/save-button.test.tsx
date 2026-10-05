@@ -24,8 +24,11 @@ afterEach(() => {
  * needs-work 09-26 P2 (grok 23:45 #2, audited 00:3x): the hydration
  * gate is LOAD-BEARING — pre-hydration `saved` is always false, so
  * removing the gate would invert intent for already-stored artworks
- * (a remove-click dispatches add). The honest repair keeps the gate
- * but makes it legible: aria-busy announces the non-interactive state.
+ * (a remove-click dispatches add). grok 10-05 #10 moved the gate into
+ * the click handler: a `disabled` button is unfocusable and swallows
+ * clicks with no feedback, so the CTA stays enabled with `aria-busy`
+ * announcing the not-yet-real state while the handler ignores
+ * pre-hydration toggles.
  */
 describe("save-button hydration state", () => {
   it("is interactive after hydration and announces no busy state", () => {
@@ -41,14 +44,15 @@ describe("save-button hydration state", () => {
     expect(button.getAttribute("aria-busy")).toBe("false");
   });
 
-  it("wires disabled + aria-busy to the hydration flag (source pin)", () => {
+  it("wires the click guard + aria-busy to the hydration flag (source pin)", () => {
     // RTL cannot observe the pre-hydration window (effects flush on
     // mount), so the pre-hydration wiring is pinned structurally: the
-    // gate is load-bearing (ungated, a stored artwork's remove-click
-    // dispatches add) and aria-busy makes it legible to AT.
+    // button is never disabled, and the handler refuses to toggle until
+    // the stored selection has loaded.
     const src = readFileSync(join(__dirname, "save-button.tsx"), "utf8");
     expect(src).toContain("aria-busy={!isHydrated}");
-    expect(src).toContain("disabled={!isHydrated}");
+    expect(src).toContain("if (!isHydrated) return;");
+    expect(src).not.toContain("disabled={!isHydrated}");
   });
 });
 
