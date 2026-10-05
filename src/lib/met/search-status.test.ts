@@ -120,6 +120,7 @@ describe("computeSearchStatus", () => {
     expect(
       computeSearchStatus({
         totalIds: 500,
+        reportedTotal: 500,
         hydratedCount: base.pageIdCount,
         pageIdCount: base.pageIdCount,
         usableCount: 0,

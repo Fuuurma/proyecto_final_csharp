@@ -331,10 +331,7 @@ function Explore() {
               // while the user saw nothing new, resetting the counter
               // and re-arming "Load more" on a dead stream (needs-work
               // 10-04).
-              const newCount = dedupeById([
-                ...result.artworks,
-                ...all,
-              ]).length;
+              const newCount = dedupeById([...result.artworks, ...all]).length;
               if (newCount === lastChunkLength) {
                 zeroYieldWindows += 1;
                 if (zeroYieldWindows >= 2) setFillExhausted(true);
