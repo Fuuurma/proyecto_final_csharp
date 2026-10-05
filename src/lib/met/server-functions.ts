@@ -307,6 +307,7 @@ export const searchCollection = createServerFn({ method: "GET" })
         // honest message and payload.
         const zeroUsableStatus = computeSearchStatus({
           totalIds: search.objectIds.length,
+          reportedTotal: search.total,
           hydratedCount: hydrated.length,
           pageIdCount: pageIds.length,
           usableCount: 0,
@@ -355,6 +356,7 @@ export const searchCollection = createServerFn({ method: "GET" })
       // branches there (empty index, outage-vs-sieve drops, success).
       const status = computeSearchStatus({
         totalIds: search.objectIds.length,
+        reportedTotal: search.total,
         hydratedCount: hydrated.length,
         pageIdCount: pageIds.length,
         usableCount: artworks.length,

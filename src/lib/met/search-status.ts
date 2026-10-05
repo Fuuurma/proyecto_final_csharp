@@ -34,12 +34,20 @@ export function searchFailureKind(
  */
 export function computeSearchStatus(input: {
   totalIds: number;
+  reportedTotal: number;
   hydratedCount: number;
   pageIdCount: number;
   usableCount: number;
   preFiltered: boolean;
 }): CollectionSearchStatus {
-  if (input.totalIds === 0) return "empty";
+  // "empty" asserts the index itself holds nothing — only the index's
+  // own zero can say that. A null-ID listing (objectIDs: null collapses
+  // to []) or a window past the delivered list leaves reportedTotal > 0
+  // with nothing hydrated: the source promised rows it did not deliver,
+  // which is partial — "empty" here would render "No matching works"
+  // beside "470000 in the index" (needs-work 10-02 P1 + 10-02 P3).
+  if (input.reportedTotal === 0 && input.totalIds === 0) return "empty";
+  if (input.pageIdCount === 0) return "partial";
   // Zero usable after FULL hydration is the honest empty (the server's
   // early branch owns that cell). This clause must agree with it: the
   // preFiltered-partial gate is for hydration shortfalls and PARTIAL

@@ -13,6 +13,7 @@ const base = {
   hydratedCount: SEARCH_PAGE_SIZE,
   usableCount: SEARCH_PAGE_SIZE,
   preFiltered: true,
+  reportedTotal: 500,
 };
 
 describe("computeSearchStatus", () => {
@@ -21,11 +22,44 @@ describe("computeSearchStatus", () => {
       computeSearchStatus({
         ...base,
         totalIds: 0,
+        reportedTotal: 0,
         hydratedCount: 0,
         pageIdCount: 0,
         usableCount: 0,
       }),
     ).toBe("empty");
+  });
+
+  it("a null-ID listing on a non-empty index is partial, not empty", () => {
+    // needs-work 10-02 P1: upstream collapses objectIDs to null while
+    // total stays >0 — the listing delivered no ids but the index
+    // claims rows. "empty" rendered "No matching works" beside
+    // "470000 in the index".
+    expect(
+      computeSearchStatus({
+        ...base,
+        totalIds: 0,
+        reportedTotal: 470_000,
+        hydratedCount: 0,
+        pageIdCount: 0,
+        usableCount: 0,
+      }),
+    ).toBe("partial");
+  });
+
+  it("a window past the delivered list is partial, not empty", () => {
+    // needs-work 10-02 P3: an out-of-range page yields a zero-id window
+    // on a non-empty index — an unfulfilled promise, not an empty index.
+    expect(
+      computeSearchStatus({
+        ...base,
+        totalIds: 500,
+        reportedTotal: 500,
+        hydratedCount: 0,
+        pageIdCount: 0,
+        usableCount: 0,
+      }),
+    ).toBe("partial");
   });
 
   it("any hydration failure is partial, on both branches", () => {
