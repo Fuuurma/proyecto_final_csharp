@@ -38,11 +38,17 @@ describe("archive token contrast", () => {
   });
 
   it("sticky offsets derive from the header-height token", () => {
-    expect(styles).toContain("--header-h: 76px");
-    expect(styles).toContain("--header-h: 68px");
+    // .collection-index__intro is a sibling of .site-header, not a
+    // descendant — the token only reaches it when declared on :root.
+    const rootBlock = styles.slice(
+      styles.indexOf(":root"),
+      styles.indexOf("}", styles.indexOf(":root")),
+    );
+    expect(rootBlock).toContain("--header-h: 76px");
+    expect(styles).toMatch(/:root\s*\{[^}]*--header-h:\s*68px/);
     const introBlock = styles.slice(
-      styles.indexOf(".collection-index__intro"),
-      styles.indexOf("}", styles.indexOf(".collection-index__intro")),
+      styles.indexOf(".collection-index__intro {"),
+      styles.indexOf("}", styles.indexOf(".collection-index__intro {")),
     );
     expect(introBlock).toContain("var(--header-h)");
   });
