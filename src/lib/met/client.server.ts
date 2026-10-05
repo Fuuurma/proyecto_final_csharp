@@ -79,13 +79,18 @@ async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
     circuitOpenedAt = undefined;
     return result;
   } catch (error) {
-    if (
-      error instanceof MetApiError &&
-      (error.kind === "timeout" || error.kind === "5xx")
-    ) {
-      consecutiveFailures += 1;
-      if (consecutiveFailures >= CIRCUIT_FAILURE_LIMIT) {
-        circuitOpenedAt = Date.now();
+    if (error instanceof MetApiError) {
+      if (error.kind === "timeout" || error.kind === "5xx") {
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= CIRCUIT_FAILURE_LIMIT) {
+          circuitOpenedAt = Date.now();
+        }
+      } else {
+        // A typed 4xx/429/parse means the Met answered — proof of life.
+        // Only unanswered or broken responses count toward opening the
+        // circuit, so an interleaved 404 can't let three non-consecutive
+        // timeouts trip it (needs-work 09-25 P3).
+        consecutiveFailures = 0;
       }
     }
     throw error;

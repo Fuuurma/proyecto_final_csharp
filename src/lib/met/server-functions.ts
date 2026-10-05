@@ -284,7 +284,10 @@ export const searchCollection = createServerFn({ method: "GET" })
             department:
               (mappedDepartmentId !== undefined
                 ? departmentNameById(mappedDepartmentId)
-                : undefined) ?? mappedDepartment,
+                : undefined) ??
+              (mappedDepartment === missingDepartmentFilter
+                ? department
+                : mappedDepartment),
             departmentId: mappedDepartmentId,
             total: search.total,
             preFiltered: search.preFiltered,

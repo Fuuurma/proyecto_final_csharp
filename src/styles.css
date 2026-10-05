@@ -749,7 +749,7 @@ img {
 .path-card {
   display: flex;
   flex-direction: column;
-  border-top: 2px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .path-card--2 {
@@ -1316,7 +1316,7 @@ img {
   gap: 0.85rem;
   margin-top: 2rem;
   padding: 0.6rem 0.75rem 0.6rem 1rem;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--rule);
   background: var(--white);
 }
 
@@ -1574,21 +1574,21 @@ img {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.25rem 0.55rem;
-  border: 1px solid var(--rule);
-  background: var(--paper-deep);
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
   color: var(--ink);
   font-family: var(--sans);
   font-size: 11px;
   line-height: 1;
   transition:
     border-color 150ms ease,
-    color 150ms ease,
-    background-color 150ms ease;
+    color 150ms ease;
 }
 
 .filter-pill:hover {
-  border-color: var(--red);
+  border-bottom-color: var(--red);
   color: var(--red);
 }
 
@@ -3520,6 +3520,12 @@ body:has(.selection-tray.is-collapsed) {
   .artwork-card__actions,
   .selection-row__actions {
     display: none;
+  }
+
+  /* The actions cell is hidden above; keep the meta grid one column or it
+     reserves a dead trailing track on paper (grok 09-17 #209). */
+  .artwork-card__meta {
+    grid-template-columns: 1fr;
   }
 
   body,
