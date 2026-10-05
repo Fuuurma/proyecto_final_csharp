@@ -451,7 +451,10 @@ function Explore() {
         <span className="eyebrow">Curated paths</span>
         <div className="path-chip-row">
           {curatedPaths.map((path) => {
-            const isActive = path.slug === pathSlug;
+            // The chip owns the results only when a curated path is actually
+            // shown — a live q= query nulls shownPath and the grid goes live
+            // (grok 10-05 P2: the chip claimed current-page it did not own).
+            const isActive = path.slug === pathSlug && Boolean(shownPath);
             return (
               <Link
                 key={path.slug}

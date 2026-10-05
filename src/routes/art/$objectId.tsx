@@ -819,7 +819,9 @@ function MetadataRow({
                 : "Click to copy accession number"
             }
             aria-label={
-              copyFailed ? "Copy failed, try again" : "Copy to clipboard"
+              copyFailed
+                ? `Copy failed, try again — ${value}`
+                : `Copy accession number ${value} to clipboard`
             }
           >
             <span>{value}</span>
