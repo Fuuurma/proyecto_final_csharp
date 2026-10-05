@@ -613,6 +613,39 @@ describe("fetchMetSearchIds cache value bound", () => {
     expect(result.objectIds).toHaveLength(MAX_CACHED_SEARCH_IDS + 1);
     expect(result.total).toBe(ids.length);
   });
+
+  // The oversize slot is a module-level fallback that lives in
+  // client.server.ts, not in the `store` that clearMetCache() empties — so
+  // "clears the whole cache" was not true. This is the failure it hides: a
+  // reset that leaves the slot populated hands the NEXT test a listing that
+  // was served before the reset, so a test can pass or fail on state it
+  // believes it cleared.
+  it("clearMetCache also drops the oversize stale slot", async () => {
+    const ids = Array.from(
+      { length: MAX_CACHED_SEARCH_IDS + 1 },
+      (_, i) => i + 1,
+    );
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return response({ total: ids.length, objectIDs: ids });
+      }
+      throw new DOMException("aborted", "AbortError");
+    };
+    vi.stubGlobal("fetch", fetcher);
+
+    // Populate the oversize slot, then reset the way every other test does.
+    await fetchMetSearchIds("bound-over-reset");
+    clearMetCache();
+
+    // After a full reset nothing may be served from the pre-reset slot: the
+    // request has to reach upstream and fail honestly, not quietly hand back
+    // the 20,001 ids captured before the reset.
+    await expect(fetchMetSearchIds("bound-over-reset")).rejects.toThrow(
+      /timed out/,
+    );
+  });
 });
 
 // Immutable upstream edge cache (fleet DST-meet-the-met-01): concurrent

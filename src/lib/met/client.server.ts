@@ -7,6 +7,7 @@ import {
   getCached,
   getEdgeCached,
   getStaleCached,
+  registerCacheInvalidator,
   setCached,
   setEdgeCached,
 } from "./cache";
@@ -422,6 +423,14 @@ let oversizedStale: {
   value: MetSearchIds;
   expiresAt: number;
 } | null = null;
+
+// The slot is deliberately not in the shared `store` — an over-bound listing
+// is too large to hold there — so it has to announce itself to be clearable.
+// Without this, clearMetCache() empties the cache and leaves this one holding
+// a pre-reset listing, which is exactly the state a reset exists to remove.
+registerCacheInvalidator(() => {
+  oversizedStale = null;
+});
 
 export type MetSearchIds = {
   total: number;

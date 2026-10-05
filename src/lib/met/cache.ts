@@ -81,11 +81,29 @@ export function setCached<T>(key: string, value: T, ttl: number): void {
   store.set(key, { value, expiresAt: Date.now() + ttl });
 }
 
+// Caches that deliberately live OUTSIDE `store` cannot be cleared from here
+// without a back-reference, and there is at least one: the oversize-listing
+// fallback in client.server.ts, which is too large to cache by design and so
+// keeps its own module-level slot. clearMetCache() claims to clear the whole
+// cache, so those must join the reset — otherwise a caller that resets still
+// reads pre-reset state out of a slot nobody told it about.
+const extraInvalidators = new Set<() => void>();
+
+/** Register a module-level cache slot to be emptied by clearMetCache().
+ *  Returns an unregister function for tests that reload the module. */
+export function registerCacheInvalidator(fn: () => void): () => void {
+  extraInvalidators.add(fn);
+  return () => {
+    extraInvalidators.delete(fn);
+  };
+}
+
 // Test-only escape hatch: clears the whole cache. Production code never
 // needs to invalidate The Met data within a process lifetime.
 export function clearMetCache(): void {
   store.clear();
   inflight.clear();
+  for (const invalidate of extraInvalidators) invalidate();
 }
 
 // --- Concurrent-request dedupe -------------------------------------------
