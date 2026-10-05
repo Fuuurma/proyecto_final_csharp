@@ -12,14 +12,13 @@ import { DetailSkeleton } from "@/components/detail-skeleton";
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
-  CheckIcon,
   CloseIcon,
   ExpandIcon,
-  ShareIcon,
 } from "@/components/icons";
 import { SaveButton } from "@/components/save-button";
+import { ShareButton } from "@/components/share-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -661,36 +660,6 @@ function ImageLightboxStage({ src, alt }: { src: string; alt: string }) {
         <img src={src} alt={alt} className="image-dialog-asset" />
       </button>
     </div>
-  );
-}
-
-function ShareButton({ artwork }: { artwork: Artwork }) {
-  const { copied, copyFailed, copy } = useCopyToClipboard(2200);
-
-  async function handleShare() {
-    const url =
-      typeof window !== "undefined"
-        ? window.location.href
-        : artwork.canonicalUrl;
-    await copy(url);
-  }
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="lg"
-      className="record-link"
-      onClick={handleShare}
-      aria-label={copied ? "Link copied to clipboard" : "Copy object page link"}
-    >
-      <span data-icon="inline-start">
-        {copied ? <CheckIcon /> : <ShareIcon />}
-      </span>
-      <span>
-        {copyFailed ? "Copy failed" : copied ? "Copied link" : "Share"}
-      </span>
-    </Button>
   );
 }
 
