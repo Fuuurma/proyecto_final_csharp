@@ -643,6 +643,50 @@ describe("fetchMetSearchIds cache value bound", () => {
     expect(againB.objectIds).toEqual(idsB);
   });
 
+  // needs-work 10-02 P2: over-bound listings used to skip BOTH cache
+  // tiers, so a cold isolate refetched ~100k–470k ids from upstream on
+  // every request. The memory bound only justifies skipping the retained
+  // in-process map — the edge tier lives outside the isolate, so the
+  // listing persists there for the search TTL. The edge-hit path must
+  // not backfill the bounded map with the oversized value either.
+  it("edge-caches over-bound listings without re-entering the in-process map", async () => {
+    const backing = new Map<string, string>();
+    vi.stubGlobal("caches", {
+      default: {
+        match: async (key: string) => {
+          const body = backing.get(key);
+          return body === undefined ? undefined : new Response(body);
+        },
+        put: async (key: string, res: Response) => {
+          backing.set(key, await res.text());
+        },
+      },
+    });
+    const ids = Array.from(
+      { length: MAX_CACHED_SEARCH_IDS + 1 },
+      (_, i) => i + 1,
+    );
+    let calls = 0;
+    let seenUrl = "";
+    vi.stubGlobal("fetch", (async (input: RequestInfo | URL) => {
+      calls += 1;
+      seenUrl = String(input instanceof Request ? input.url : input);
+      return response({ total: ids.length, objectIDs: ids });
+    }) as typeof fetch);
+
+    await fetchMetSearchIds("edge-over");
+    expect(backing.size).toBe(1);
+    expect(getCached(seenUrl)).toBeUndefined();
+
+    // Fresh isolate: the edge hit serves with no upstream call — and it
+    // must seed the stale tier, not the bounded map.
+    clearMetCache();
+    const again = await fetchMetSearchIds("edge-over");
+    expect(calls).toBe(1);
+    expect(again.objectIds).toHaveLength(ids.length);
+    expect(getCached(seenUrl)).toBeUndefined();
+  });
+
   it("serving uncached oversize listings still returns them whole", async () => {
     const ids = Array.from(
       { length: MAX_CACHED_SEARCH_IDS + 1 },

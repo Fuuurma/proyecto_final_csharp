@@ -444,6 +444,20 @@ const oversizedStale = new Map<
   { value: MetSearchIds; expiresAt: number }
 >();
 
+function rememberOversizedStale(key: string, value: MetSearchIds): void {
+  // Refresh-on-write like setCached: delete first so the eviction check
+  // sees the true budget and the key keeps recency order.
+  oversizedStale.delete(key);
+  oversizedStale.set(key, {
+    value,
+    expiresAt: Date.now() + CACHE_TTL_MS.search,
+  });
+  if (oversizedStale.size > OVERSIZED_STALE_MAX) {
+    const oldest = oversizedStale.keys().next().value;
+    if (oldest !== undefined) oversizedStale.delete(oldest);
+  }
+}
+
 // The slot is deliberately not in the shared `store` — an over-bound listing
 // is too large to hold there — so it has to announce itself to be clearable.
 // Without this, clearMetCache() empties the cache and leaves this one holding
@@ -567,7 +581,15 @@ export async function fetchMetSearchIds(
       getCached<MetSearchIds>(cacheKey) ??
       (await getEdgeCached<MetSearchIds>(cacheKey));
     if (cached) {
-      setCached(cacheKey, cached, CACHE_TTL_MS.search);
+      // An edge hit can be over-bound now — edge entries persist outside
+      // the isolate, so letting one back into the bounded in-process map
+      // on every hit would defeat the memory bound the gate exists for.
+      // Seed the keyed stale tier instead so this isolate still degrades.
+      if (cached.objectIds.length <= MAX_CACHED_SEARCH_IDS) {
+        setCached(cacheKey, cached, CACHE_TTL_MS.search);
+      } else {
+        rememberOversizedStale(cacheKey, cached);
+      }
       return cached;
     }
 
@@ -594,25 +616,17 @@ export async function fetchMetSearchIds(
     // weight — a whole-department /objects listing (~100k ids) or a bare
     // q=* search (~470k ids) would ride in as a single entry, and a burst
     // of large listings pressures the Worker isolate's memory (devin
-    // 09-10 12:50 P1). Oversize listings still serve, just uncached: the
-    // search TTL would forget them mid-paging anyway, and refetching is
-    // the same upstream cost the no-cache path always paid.
+    // 09-10 12:50 P1). The bound applies to the retained in-process map
+    // only: the edge tier lives outside the isolate, so oversize
+    // listings still persist there for the 10-min search TTL instead of
+    // refetching upstream on every cold request and page turn
+    // (needs-work 10-02 P2). Edge hits skip the map backfill above.
     if (loaded.objectIds.length <= MAX_CACHED_SEARCH_IDS) {
       setCached(cacheKey, loaded, CACHE_TTL_MS.search);
-      await setEdgeCached(cacheKey, loaded, EDGE_TTL_S.search);
     } else {
-      // Refresh-on-write like setCached: delete first so the eviction
-      // check sees the true budget and the key keeps recency order.
-      oversizedStale.delete(cacheKey);
-      oversizedStale.set(cacheKey, {
-        value: loaded,
-        expiresAt: Date.now() + CACHE_TTL_MS.search,
-      });
-      if (oversizedStale.size > OVERSIZED_STALE_MAX) {
-        const oldest = oversizedStale.keys().next().value;
-        if (oldest !== undefined) oversizedStale.delete(oldest);
-      }
+      rememberOversizedStale(cacheKey, loaded);
     }
+    await setEdgeCached(cacheKey, loaded, EDGE_TTL_S.search);
     return loaded;
   });
   return slice(result);
