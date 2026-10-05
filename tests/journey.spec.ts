@@ -48,12 +48,12 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
     page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
   ).toBeVisible();
 
-  // The persisted payload is the versioned envelope, and a reload
+  // The persisted payload is the mergeable versioned document, and a reload
   // rehydrates the saved state from it.
   const stored = await page.evaluate(() =>
     window.localStorage.getItem("meet-the-met.selection"),
   );
-  expect(JSON.parse(stored ?? "null")).toMatchObject({ version: 1 });
+  expect(JSON.parse(stored ?? "null")).toMatchObject({ version: 2 });
   await page.reload();
   await expect(
     page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
@@ -77,6 +77,51 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { name: "Keep works" }).click();
   await expect(page.getByRole("alertdialog")).toBeHidden();
+});
+
+test("selection edits synchronize across open tabs", async ({
+  page,
+  context,
+}) => {
+  const otherTab = await context.newPage();
+  await Promise.all([page.goto("/art/436535"), otherTab.goto("/art/436524")]);
+
+  const saveWheat = page.getByRole("button", {
+    name: /Save Wheat Field with Cypresses/,
+  });
+  const saveSunflowers = otherTab.getByRole("button", {
+    name: /Save Sunflowers/,
+  });
+  await expect(saveWheat).toBeEnabled();
+  await expect(saveSunflowers).toBeEnabled();
+
+  await saveWheat.click();
+  await expect(
+    otherTab.getByRole("button", {
+      name: /Remove Wheat Field with Cypresses from your selection/,
+    }),
+  ).toBeVisible();
+
+  await saveSunflowers.click();
+  await expect(
+    page.getByRole("button", {
+      name: /Remove Sunflowers from your selection/,
+    }),
+  ).toBeVisible();
+
+  await selectionNav(page).click();
+  await expect(page).toHaveURL(/\/selection$/);
+  await expect(page.locator(".selection-row__meta")).toHaveCount(2);
+  await expect(
+    page.locator(".selection-row__meta").getByRole("heading", {
+      name: "Wheat Field with Cypresses",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".selection-row__meta").getByRole("heading", {
+      name: "Sunflowers",
+    }),
+  ).toBeVisible();
 });
 
 test("Detail Previous/Next follow the browsed Explore order", async ({
@@ -195,6 +240,55 @@ test("Home department index opens a bounded department view", async ({
   await expect(page.locator(".explore-count")).toHaveText("6 / 6 review works");
 });
 
+test("Collection index intro keeps its sticky header offset", async ({
+  page,
+}) => {
+  // The intro is a sibling of .site-header — its sticky top only
+  // resolves while --header-h lives on :root (review 10-05 11:17 #4).
+  await page.goto("/");
+  const intro = page.locator(".collection-index__intro");
+  await expect(intro).toBeVisible();
+
+  const geometry = await intro.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    const root = getComputedStyle(document.documentElement);
+    return {
+      position: computed.position,
+      top: computed.top,
+      headerH: root.getPropertyValue("--header-h").trim(),
+      rem: parseFloat(root.fontSize),
+    };
+  });
+  const expectedTop = parseFloat(geometry.headerH) + geometry.rem;
+
+  if ((page.viewportSize()?.width ?? 0) <= 760) {
+    // The 760px media block deliberately unpins the intro; the token
+    // still narrows the header it would clear.
+    expect(geometry.position).toBe("static");
+    expect(geometry.headerH).toBe("68px");
+    return;
+  }
+
+  expect(geometry.position).toBe("sticky");
+  expect(geometry.headerH).toBe("76px");
+  expect(geometry.top).toBe(`${expectedTop}px`);
+
+  // Scroll the index section's midpoint to the viewport center — safely
+  // inside the sticky range at both ends (scrolling to the page bottom
+  // would clamp the intro against the section's bottom edge instead).
+  const pinned = await intro.evaluate((el) => {
+    const section = el.closest(".collection-index");
+    if (!section) {
+      return null;
+    }
+    const rect = section.getBoundingClientRect();
+    const delta = rect.top + rect.height / 2 - window.innerHeight / 2;
+    window.scrollTo({ top: window.scrollY + delta, behavior: "instant" });
+    return el.getBoundingClientRect().top;
+  });
+  expect(pinned).toBeCloseTo(expectedTop, 0);
+});
+
 test("About keeps the source and working rules in view", async ({ page }) => {
   await page.goto("/about");
 
@@ -246,6 +340,62 @@ test("A broad Explore search can load another page of the index", async ({
   await expect(page.locator(".artwork-card")).not.toHaveCount(SEARCH_PAGE_SIZE);
   const after = await page.locator(".artwork-card").count();
   expect(after).toBeGreaterThan(SEARCH_PAGE_SIZE);
+});
+
+// Regression: a stale path must not suppress the selected page of live results.
+test("Explore restores live pages through stale paths, filters, and browser history", async ({
+  page,
+}) => {
+  await page.goto("/explore?q=e&path=stale-room&page=2");
+  await expect(page.getByRole("heading", { name: "“e”" })).toBeVisible();
+  await expect
+    .poll(() => page.locator(".artwork-card").count())
+    .toBeGreaterThan(SEARCH_PAGE_SIZE);
+
+  // A new department filter clears the stale path and selected page while
+  // keeping the live query; browser back restores the shareable prior state.
+  await page.getByRole("button", { name: "Asian Art", exact: true }).click();
+  await expect
+    .poll(() => {
+      const search = new URL(page.url()).searchParams;
+      return {
+        q: search.get("q"),
+        department: search.get("department"),
+        path: search.get("path"),
+        page: search.get("page"),
+      };
+    })
+    .toEqual({ q: "e", department: "Asian Art", path: null, page: null });
+
+  await page.goBack();
+  await expect
+    .poll(() => {
+      const search = new URL(page.url()).searchParams;
+      return [search.get("q"), search.get("path"), search.get("page")];
+    })
+    .toEqual(["e", "stale-room", "2"]);
+  await expect
+    .poll(() => page.locator(".artwork-card").count())
+    .toBeGreaterThan(SEARCH_PAGE_SIZE);
+
+  // Department-only page 2 is empty in this fixture, so the prior page must
+  // be restored even though an unrelated path slug remains in the URL.
+  await page.goto("/explore?department=Asian%20Art&path=stale-room&page=2");
+  await expect(page.getByRole("heading", { name: "Asian Art" })).toBeVisible();
+  await expect(page.locator(".artwork-card")).toHaveCount(6);
+  await expect(page.locator(".explore-count")).toHaveText("6 / 6 review works");
+
+  // A recognized curated path still owns its own ordered three-work set.
+  await page.goto("/explore?path=van-gogh-late-light&page=2");
+  await expect(
+    page.getByRole("heading", { name: "Van Gogh / late light" }),
+  ).toBeVisible();
+  await expect(page.locator(".artwork-card")).toHaveCount(3);
+  await expect(
+    page
+      .locator(".path-chip-row")
+      .getByRole("link", { name: "Van Gogh / late light", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("Departments index opens a review room and a live department", async ({

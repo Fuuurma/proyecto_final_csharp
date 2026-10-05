@@ -32,7 +32,13 @@ import {
 } from "@/data/departments";
 import { sequenceParam, writeBrowseSequence } from "@/lib/browse-sequence";
 import { exploreCountText, loadMoreState } from "@/lib/explore-load";
-import { collectPages, dedupeById, type PageCache } from "@/lib/fill-pages";
+import {
+  cachePages,
+  collectPages,
+  dedupeById,
+  type PageCache,
+  pageCacheKey,
+} from "@/lib/fill-pages";
 import type { Artwork } from "@/lib/met/normalize";
 import {
   isLiveCollectionSearch,
@@ -41,9 +47,8 @@ import {
 import { searchCollection } from "@/lib/met/server-functions";
 import { cn } from "@/lib/utils";
 
-// Session-scoped memo for tail-fill pages — see fill-pages.ts. One source
-// of truth stays `[...result.artworks, ...extra]`; this only skips
-// network round-trips already paid this session.
+// Session-scoped memo for pages before the selected page — the route loader
+// owns the selected page, and results render in `[...extra, ...result.artworks]`.
 const refillCache: PageCache<Artwork> = new Map();
 
 const exploreSearchSchema = z.object({
@@ -80,6 +85,8 @@ export const Route = createFileRoute("/explore")({
     q: search.q ?? "",
     department: search.department ?? "all",
     departmentId: search.departmentId,
+    path: search.path ?? "",
+    page: search.page ?? 1,
   }),
   loader: ({ deps }) =>
     searchCollection({
@@ -87,7 +94,7 @@ export const Route = createFileRoute("/explore")({
         q: deps.q,
         department: deps.department,
         departmentId: deps.departmentId,
-        page: 1,
+        page: deps.page,
       },
     }),
   pendingComponent: ExplorePending,
@@ -124,6 +131,20 @@ function Explore() {
   // curated results (codex sol review 09-09).
   const query = (q ?? "").trim();
   const activeDepartment = department ?? "all";
+  // A departmentId arrival filters by id; when the id names one of the
+  // toggle's own rooms, press the matching chip so the filter state is
+  // visible (DESIGN.md: query/filter state is visible). Ids outside the
+  // curated rooms can't be represented by a chip — the grid label
+  // (liveDepartmentName) carries the state instead.
+  const departmentIdName =
+    departmentId !== undefined ? departmentNameById(departmentId) : undefined;
+  const pressedDepartment =
+    departmentIdName !== undefined &&
+    (exploreDepartmentFilters as readonly string[]).includes(departmentIdName)
+      ? departmentIdName
+      : departmentId !== undefined
+        ? undefined
+        : activeDepartment;
   const page = pageParam ?? 1;
   const activePath = curatedPaths.find((path) => path.slug === pathSlug);
   const result = Route.useLoaderData();
@@ -132,11 +153,15 @@ function Explore() {
     department: activeDepartment,
     departmentId,
   });
+  // The label must follow the query's precedence (resolvedDepartmentId
+  // prefers departmentId): a URL carrying both a name and an id used to
+  // label the grid with the name while querying the id — a label-vs-
+  // grid lie (needs-work 09-26 P2).
   const liveDepartmentName =
-    activeDepartment !== "all"
-      ? activeDepartment
-      : departmentId !== undefined
-        ? (departmentNameById(departmentId) ?? result.department)
+    departmentId !== undefined
+      ? (departmentNameById(departmentId) ?? result.department)
+      : activeDepartment !== "all"
+        ? activeDepartment
         : undefined;
   const [extra, setExtra] = useState<Artwork[]>([]);
   const [isFilling, setIsFilling] = useState(false);
@@ -150,14 +175,13 @@ function Explore() {
   // honest in the counter; this only stops offering empty loads.
   const [fillExhausted, setFillExhausted] = useState(false);
   const [isClient, setIsClient] = useState(false);
-  // Reset the previous search's tail-fill the moment the search identity
-  // changes — adjusting state during render (the React-sanctioned
-  // pattern) so a new query never paints one frame of stale extras
-  // (devin 09-10 00:19).
+  // Reset page restoration during render when filters, path ownership, or the
+  // selected page changes so stale extras never flash beside new loader data.
   const searchKey = `${query}|${activeDepartment}|${departmentId ?? ""}|${pathSlug ?? ""}|${live ? "live" : "curated"}`;
-  const [prevSearchKey, setPrevSearchKey] = useState(searchKey);
-  if (prevSearchKey !== searchKey) {
-    setPrevSearchKey(searchKey);
+  const fillKey = `${searchKey}|${page}`;
+  const [prevFillKey, setPrevFillKey] = useState(fillKey);
+  if (prevFillKey !== fillKey) {
+    setPrevFillKey(fillKey);
     setExtra([]);
     setFillFailed(false);
     setFillExhausted(false);
@@ -175,7 +199,7 @@ function Explore() {
   // it — with a query active the grid is live Met results, and labelling
   // them with the path title lied (devin 09-09 14:17 #3 / 14:57 #1).
   const shownPath = activePath && !live ? activePath : null;
-  const works = pathWorks ?? dedupeById([...result.artworks, ...extra]);
+  const works = pathWorks ?? dedupeById([...extra, ...result.artworks]);
   const total = pathWorks ? pathWorks.length : result.total;
   const remaining = Math.max(0, total - works.length);
   // The load-more honesty decisions (exact-vs-upstream counts, the cap
@@ -253,7 +277,11 @@ function Explore() {
     setExtra([]);
     setFillFailed(false);
     setFillExhausted(false);
-    if (page <= 1 || pathSlug || !live) {
+    const cacheKey = [query, activeDepartment, departmentId];
+    if (live && result.status !== "error") {
+      cachePages(refillCache, pageCacheKey(cacheKey, page), result.artworks);
+    }
+    if (page <= 1 || shownPath || !live) {
       setIsFilling(false);
       return;
     }
@@ -263,9 +291,9 @@ function Explore() {
       try {
         await collectPages(
           refillCache,
-          [query, activeDepartment, departmentId],
-          2,
-          page,
+          cacheKey,
+          1,
+          page - 1,
           async (nextPage) => {
             const next = await searchCollection({
               data: {
@@ -275,6 +303,16 @@ function Explore() {
                 page: nextPage,
               },
             });
+            // The server RESOLVES {status: "error", artworks: []} when
+            // the curated fallback is empty — the normal shape for any
+            // page >= 2. Returning the empty array would let
+            // collectPages cache the failed page as a legitimate empty
+            // and let the zero-yield counter blame the index; throwing
+            // routes to the honest fillFailed handler and leaves the
+            // page uncached (needs-work 09-25 P1).
+            if (next.status === "error") {
+              throw new Error(next.message ?? "Met collection search");
+            }
             return next.artworks;
           },
           {
@@ -309,7 +347,16 @@ function Explore() {
     return () => {
       cancelled = true;
     };
-  }, [page, query, activeDepartment, departmentId, pathSlug, live]);
+  }, [
+    page,
+    query,
+    activeDepartment,
+    departmentId,
+    live,
+    shownPath,
+    result.artworks,
+    result.status,
+  ]);
 
   function changeDepartment(nextValues: string[]) {
     const nextDepartment = nextValues[0];
@@ -332,6 +379,7 @@ function Explore() {
         q: query || undefined,
         department: activeDepartment === "all" ? undefined : activeDepartment,
         departmentId,
+        path: pathSlug,
         page: page + 1,
       },
     });
@@ -389,9 +437,8 @@ function Explore() {
           <legend className="eyebrow">Department</legend>
           <ToggleGroup
             aria-label="Department"
-            className="department-toggle-group"
             onValueChange={changeDepartment}
-            value={departmentId !== undefined ? [] : [activeDepartment]}
+            value={pressedDepartment === undefined ? [] : [pressedDepartment]}
             variant="outline"
             spacing={0}
           >
@@ -424,7 +471,10 @@ function Explore() {
         <span className="eyebrow">Curated paths</span>
         <div className="path-chip-row">
           {curatedPaths.map((path) => {
-            const isActive = path.slug === pathSlug;
+            // The chip owns the results only when a curated path is actually
+            // shown — a live q= query nulls shownPath and the grid goes live
+            // (grok 10-05 P2: the chip claimed current-page it did not own).
+            const isActive = path.slug === pathSlug && Boolean(shownPath);
             return (
               <Link
                 key={path.slug}
@@ -573,6 +623,32 @@ function Explore() {
             atCap={atCap}
           />
         </>
+      ) : result.status === "partial" ? (
+        // A partial result with zero usable works is a DEGRADATION, not
+        // an empty index — the old branch claimed "The index is quiet
+        // here." while the alert above said the page couldn't be fully
+        // checked (grok 10-02: contradictory + double-printed).
+        <section aria-live="polite">
+          <Empty>
+            <EmptyHeader>
+              <span className="eyebrow">Collection unavailable</span>
+              <EmptyTitle>This page couldn't be fully checked.</EmptyTitle>
+              <EmptyDescription>
+                {result.message ??
+                  "The live Met collection is answering slowly."}
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Link
+                to="/explore"
+                search={{}}
+                className={cn(buttonVariants({ size: "lg" }), "button-link")}
+              >
+                Return to the review set
+              </Link>
+            </EmptyContent>
+          </Empty>
+        </section>
       ) : (
         <section aria-live="polite">
           <Empty>
@@ -643,7 +719,7 @@ function ExplorePending() {
           {[1, 2, 3, 4, 5, 6].map((index) => (
             <div className="artwork-skeleton" key={index}>
               <Skeleton
-                className="artwork-skeleton__image aspect-(--skel-ratio)"
+                className="aspect-(--skel-ratio) w-full"
                 style={
                   {
                     "--skel-ratio": index % 3 === 0 ? "0.78" : "1.12",

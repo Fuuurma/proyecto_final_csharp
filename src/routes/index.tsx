@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArtworkImage } from "@/components/artwork-image";
 import { ArrowUpRightIcon } from "@/components/icons";
+import { ReviewDepartmentCard } from "@/components/review-department-card";
 import { buttonVariants } from "@/components/ui/button";
 import {
   curatedArtworks,
@@ -75,9 +76,9 @@ function Home() {
             <em> made legible.</em>
           </h1>
           <p className="hero__lede">
-            Meet the Met is a quiet place to look closer: a committed review set
-            of public-domain works, their makers, and the details that keep them
-            in view.
+            Meet the Met is a quiet place to look closer: a living index of
+            public-domain works, their makers, and the details that keep them in
+            view.
           </p>
           <div className="hero__actions">
             <Link
@@ -128,16 +129,19 @@ function Home() {
               className={`home-gallery__item home-gallery__item--${index + 1}`}
               key={artwork.id}
             >
+              {/* Decorative duplicate of the title link below. */}
               <Link
                 to="/art/$objectId"
                 params={{ objectId: String(artwork.id) }}
                 className="home-gallery__image-link"
+                aria-hidden="true"
+                tabIndex={-1}
               >
                 <ArtworkImage artwork={artwork} />
               </Link>
               <div className="home-gallery__caption">
                 <span className="home-gallery__classification mono">
-                  {artwork.classification ?? "Unclassified"}
+                  {artwork.classification ?? "Collection object"}
                 </span>
                 <h3>
                   <Link
@@ -147,7 +151,7 @@ function Home() {
                     {artwork.displayTitle}
                   </Link>
                 </h3>
-                <span className="mono">
+                <span className="home-gallery__artist">
                   {artwork.artist ?? "Artist unknown"}
                 </span>
               </div>
@@ -184,6 +188,7 @@ function Home() {
                 className={`path-card path-card--${index + 1}`}
                 key={path.title}
               >
+                {/* Decorative duplicate of the path link below. */}
                 <Link
                   to="/explore"
                   search={{
@@ -191,6 +196,8 @@ function Home() {
                     department: undefined,
                   }}
                   className="path-card__image-link"
+                  aria-hidden="true"
+                  tabIndex={-1}
                 >
                   <ArtworkImage artwork={artwork} />
                 </Link>
@@ -228,35 +235,9 @@ function Home() {
           </p>
         </div>
         <div className="collection-index__list">
-          {reviewDepartments.map((department) => {
-            const artwork = curatedArtworks.find(
-              (candidate) => candidate.id === department.artworkId,
-            );
-            const count = curatedArtworks.filter(
-              (candidate) => candidate.department === department.name,
-            ).length;
-
-            if (!artwork) return null;
-
-            return (
-              <Link
-                className="collection-index__item"
-                key={department.name}
-                to="/explore"
-                search={{ department: department.name, path: undefined }}
-              >
-                <ArtworkImage artwork={artwork} />
-                <div className="collection-index__meta">
-                  <span className="mono">{count} in the review set</span>
-                  <h3>{department.name}</h3>
-                  <p>{department.description}</p>
-                  <span className="link-action">
-                    Open live department <span aria-hidden="true">→</span>
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
+          {reviewDepartments.map((department) => (
+            <ReviewDepartmentCard department={department} key={department.id} />
+          ))}
         </div>
         <div className="home-gallery__footer">
           <span className="mono">The rest of the museum rooms</span>

@@ -170,19 +170,17 @@ function Selection() {
             {items.map((item, index) => {
               return (
                 <article className="selection-row" key={item.id}>
+                  {/* Decorative duplicate of the h2 title link: hidden from
+                      AT and the tab order. The h2 link remains the row's
+                      single announcer, still sourced from the same stored
+                      snapshot (needs-work 09-16 intent preserved). */}
                   <Link
                     to="/art/$objectId"
                     params={{ objectId: String(item.id) }}
                     className="selection-row__image"
-                    aria-label={item.displayTitle}
+                    aria-hidden="true"
+                    tabIndex={-1}
                   >
-                    {/* The stored item is the row's single source — image
-                        AND announced name come from the same snapshot, so
-                        a catalog update (or hand-edited storage) can't
-                        make the link announce something other than the
-                        sighted title (needs-work 09-16; offline path
-                        precedent: artworkFromSelectionItem was already
-                        the fallback renderer). */}
                     <ArtworkImage artwork={artworkFromSelectionItem(item)} />
                   </Link>
                   <div className="selection-row__meta">

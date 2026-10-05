@@ -35,4 +35,56 @@ describe("normalizeMetObject", () => {
     expect(artwork.artist).toBe("A maker");
     expect(artwork.imageAspectRatio).toBe(1.5);
   });
+
+  it("falls back to a square ratio when the aspect math overflows to Infinity", () => {
+    const artwork = normalizeMetObject({
+      objectID: 11,
+      title: "A work",
+      measurements: [
+        {
+          elementName: "Overall",
+          elementMeasurements: { Height: 1e-308, Width: 1e308 },
+        },
+      ],
+    });
+
+    expect(artwork.imageAspectRatio).toBe(1);
+  });
+
+  it("falls back to a square ratio when the aspect math underflows to zero", () => {
+    const artwork = normalizeMetObject({
+      objectID: 12,
+      title: "A work",
+      measurements: [
+        {
+          elementName: "Overall",
+          elementMeasurements: { Height: 1e308, Width: 1e-308 },
+        },
+      ],
+    });
+
+    expect(artwork.imageAspectRatio).toBe(1);
+  });
+
+  it.each([
+    { label: "public domain", field: true, expected: true },
+    { label: "not public domain", field: false, expected: false },
+    { label: "unknown", field: undefined, expected: null },
+  ])("preserves $label rights status", ({ field, expected }) => {
+    const artwork = normalizeMetObject({
+      objectID: 11,
+      ...(field === undefined ? {} : { isPublicDomain: field }),
+    });
+
+    expect(artwork.isPublicDomain).toBe(expected);
+  });
+
+  it("preserves supplied rights and reproduction text", () => {
+    const artwork = normalizeMetObject({
+      objectID: 12,
+      rightsAndReproduction: "© 2018 Estate of Pablo Picasso",
+    });
+
+    expect(artwork.rights).toBe("© 2018 Estate of Pablo Picasso");
+  });
 });

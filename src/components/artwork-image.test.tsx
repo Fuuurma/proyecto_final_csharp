@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
@@ -75,6 +75,28 @@ describe("ArtworkImage", () => {
       "src",
       "https://example.com/large.jpg",
     );
+  });
+
+  it("falls back to the next source when the first one errors", () => {
+    render(<ArtworkImage artwork={makeArtwork()} />);
+    const img = screen.getByRole("img");
+    expect(img).toHaveAttribute("src", "https://example.com/small.jpg");
+
+    fireEvent.error(img);
+
+    expect(screen.getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/large.jpg",
+    );
+  });
+
+  it("renders the missing panel once every source has failed", () => {
+    render(<ArtworkImage artwork={makeArtwork()} />);
+    fireEvent.error(screen.getByRole("img"));
+    fireEvent.error(screen.getByRole("img"));
+
+    expect(screen.getByText("No image in the public record")).toBeVisible();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
   it("renders the honest missing panel when the record has no images", () => {
