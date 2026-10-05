@@ -19,6 +19,8 @@
   --focus-ring: var(--ink);
   --focus-ring-on-dark: var(--white);
   --image-field: #171815;
+  /* Primary text on the dark image field (hero record, captions). */
+  --on-image-field: #c8cbc4;
   /* Muted text on the dark image field (credits, subtitles) — must not
      compete with the artwork; ~7.4:1 on #171815. */
   --on-image-field-muted: #9aa09a;
@@ -497,11 +499,11 @@ img {
 
 .hero__record {
   width: 100%;
-  color: #c8cbc4;
+  color: var(--on-image-field);
 }
 
 .hero__record .eyebrow {
-  color: #9aa09a;
+  color: var(--on-image-field-muted);
 }
 
 .hero__record-row {
@@ -522,7 +524,7 @@ img {
 
 .hero__record p {
   margin: 0.3rem 0 0;
-  color: #9aa09a;
+  color: var(--on-image-field-muted);
   font-size: 12px;
 }
 
@@ -957,6 +959,17 @@ img {
   transition: background-color 150ms ease;
 }
 
+.department-ledger__empty {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-block: 1.5rem;
+  border-bottom: 1px solid var(--rule);
+  color: var(--archive);
+  font-size: 12px;
+}
+
 .department-ledger__item:hover {
   background-color: color-mix(in srgb, var(--paper-deep) 35%, transparent);
 }
@@ -1042,7 +1055,7 @@ img {
 }
 
 .about-hero__image figcaption .mono {
-  color: #c7d2c5;
+  color: var(--on-image-field);
 }
 
 .about-notes {
@@ -1199,7 +1212,7 @@ img {
 
 .artwork-image__missing small {
   margin-top: 0.5rem;
-  color: #777a74;
+  color: var(--on-image-field-muted);
   font-size: 9px;
 }
 
@@ -1383,7 +1396,7 @@ img {
 }
 
 .search-form input::placeholder {
-  color: #969993;
+  color: var(--archive);
 }
 
 .search-form [data-slot="input"] {
@@ -2049,7 +2062,7 @@ img {
 
 .image-dialog-subtitle {
   margin: 0.25rem 0 0;
-  color: #9aa09a;
+  color: var(--on-image-field-muted);
   font-size: 13px;
 }
 
@@ -2218,9 +2231,21 @@ img {
   transition: color 150ms ease;
 }
 
+.metadata-row__copy-btn > span:first-child {
+  /* Same hairline the metadata links carry — without it the cell read as
+     plain metadata with only cursor:pointer saying it is a button
+     (grok 09-24 #330). */
+  border-bottom: 1px solid var(--rule);
+}
+
 .metadata-row__copy-btn:hover,
 .metadata-row__copy-btn:focus-visible {
   color: var(--red);
+}
+
+.metadata-row__copy-btn:hover > span:first-child,
+.metadata-row__copy-btn:focus-visible > span:first-child {
+  border-bottom-color: var(--red);
 }
 
 .metadata-row__copied {
@@ -2527,37 +2552,8 @@ body:has(.selection-tray.is-collapsed) {
 }
 
 .selection-empty {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
   min-height: 28rem;
   border-top: 1px solid var(--ink);
-}
-
-.selection-empty__image-link {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: clamp(1.25rem, 3vw, 2.5rem);
-  background: var(--image-field);
-}
-
-.selection-empty__image-link .artwork-image {
-  background: transparent;
-}
-
-.selection-empty__image-caption {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  color: #9aa09a;
-}
-
-.selection-empty__image-caption span:last-child {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--white);
 }
 
 .selection-toolbar {
@@ -2710,6 +2706,15 @@ body:has(.selection-tray.is-collapsed) {
   transition:
     color 150ms ease,
     background-color 150ms ease;
+}
+
+@media (pointer: coarse) {
+  /* Selection reorder/remove targets sit under the 44px touch floor on
+     coarse pointers (grok 09-23 #326). Desktop keeps the compact row. */
+  .icon-button {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
 }
 
 .icon-button:hover:not(:disabled) {
@@ -3324,14 +3329,6 @@ body:has(.selection-tray.is-collapsed) {
 
   .selection-page [data-slot="empty"] {
     padding: 4rem 1.5rem;
-  }
-
-  .selection-empty {
-    grid-template-columns: 1fr;
-  }
-
-  .selection-empty__image-link {
-    padding: 1.5rem;
   }
 
   .about-page {

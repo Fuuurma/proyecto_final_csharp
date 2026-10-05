@@ -187,9 +187,8 @@ test("Selection empty state keeps a featured object in view", async ({
 }) => {
   await page.goto("/selection");
 
-  await expect(page.locator(".selection-empty__image-link")).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Open Wheat Field with Cypresses" }),
+    page.getByRole("link", { name: /Open Wheat Field with Cypresses/ }),
   ).toBeVisible();
 });
 

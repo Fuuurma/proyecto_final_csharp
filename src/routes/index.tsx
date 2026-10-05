@@ -203,7 +203,17 @@ function Home() {
                 </Link>
                 <div className="path-card__meta">
                   <span className="eyebrow">{path.label}</span>
-                  <h3>{path.title}</h3>
+                  <h3>
+                    <Link
+                      to="/explore"
+                      search={{
+                        path: path.slug,
+                        department: undefined,
+                      }}
+                    >
+                      {path.title}
+                    </Link>
+                  </h3>
                   <p>{path.description}</p>
                   <Link
                     to="/explore"

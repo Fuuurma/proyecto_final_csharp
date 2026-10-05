@@ -29,16 +29,16 @@ afterEach(() => {
 });
 
 describe("share button accessible name", () => {
-  it("keeps Share and Copied link in the visible and accessible labels", async () => {
+  it("keeps Copy link and Copied link in the visible and accessible labels", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     installClipboard(writeText);
     render(<ShareButton artwork={artwork} />);
 
     const share = screen.getByRole("button", {
-      name: "Share — copy this object page link",
+      name: "Copy link to this object page",
     });
-    expect(share.textContent).toContain("Share");
-    expect(share.getAttribute("aria-label")).toContain("Share");
+    expect(share.textContent).toContain("Copy link");
+    expect(share.getAttribute("aria-label")).toContain("Copy link");
 
     fireEvent.click(share);
     const copied = await screen.findByRole("button", {
@@ -53,7 +53,7 @@ describe("share button accessible name", () => {
     installClipboard(vi.fn().mockRejectedValue(new Error("denied")));
     render(<ShareButton artwork={artwork} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /^Share/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Copy link/ }));
     const failed = await screen.findByRole("button", {
       name: /^Copy failed —/,
     });

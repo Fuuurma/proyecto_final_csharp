@@ -69,7 +69,7 @@ function RootNotFound() {
       <h1 id="not-found-heading">This room is not in the ledger.</h1>
       <p className="not-found__message">
         The route you requested could not be located in this index. You can
-        explore all catalogued works or return to the collection ledger.
+        search the works in this index or return to the collection ledger.
       </p>
       <div className="hero__actions">
         <Link

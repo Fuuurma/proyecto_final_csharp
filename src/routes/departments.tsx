@@ -141,6 +141,18 @@ function Departments() {
               </li>
             );
           })}
+          {filteredDepartments.length === 0 ? (
+            <li className="department-ledger__empty">
+              <span>No rooms match “{filter.trim()}”.</span>
+              <button
+                type="button"
+                className="button-quiet"
+                onClick={() => setFilter("")}
+              >
+                Clear the filter
+              </button>
+            </li>
+          ) : null}
         </ol>
       </section>
     </main>
