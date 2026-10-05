@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,7 +10,13 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import type { Artwork } from "./met/normalize";
-import { SelectionProvider, STORAGE_KEY, useSelection } from "./selection";
+import {
+  persistSelection,
+  SelectionProvider,
+  STORAGE_KEY,
+  selectionItemFromArtwork,
+  useSelection,
+} from "./selection";
 
 const artwork: Artwork = {
   id: 42,
@@ -37,15 +44,33 @@ const artwork: Artwork = {
 };
 
 function Probe() {
-  const { persistenceBlocked, toggle } = useSelection();
+  const { announcement, items, persistenceBlocked, toggle, clear } =
+    useSelection();
   return (
     <>
       <output data-testid="blocked">{persistenceBlocked ?? "none"}</output>
+      <output data-testid="items">
+        {items.map((item) => item.id).join(",")}
+      </output>
+      <output data-testid="announcement">{announcement}</output>
       <button type="button" onClick={() => toggle(artwork)}>
         toggle
       </button>
+      <button type="button" onClick={clear}>
+        clear
+      </button>
     </>
   );
+}
+
+function memoryStorage(initial?: string) {
+  const values = new Map<string, string>();
+  if (initial !== undefined) values.set(STORAGE_KEY, initial);
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    stored: () => values.get(STORAGE_KEY) ?? null,
+  };
 }
 
 function renderProvider() {
@@ -82,7 +107,7 @@ describe("persistenceBlocked disclosure", () => {
   it("flags unsupported-version when a foreign envelope owns the key", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ version: 2, items: [] }),
+      JSON.stringify({ version: 3, items: [] }),
     );
     renderProvider();
     await waitFor(() =>
@@ -90,6 +115,70 @@ describe("persistenceBlocked disclosure", () => {
         "unsupported-version",
       ),
     );
+  });
+
+  it("does not overwrite a newer envelope arriving during the session", async () => {
+    renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("blocked")).toHaveTextContent("none"),
+    );
+    const foreign = JSON.stringify({ version: 3, items: [] });
+    window.localStorage.setItem(STORAGE_KEY, foreign);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEY,
+          newValue: foreign,
+          oldValue: null,
+          storageArea: window.localStorage,
+          url: window.location.href,
+        }),
+      );
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("blocked")).toHaveTextContent(
+        "unsupported-version",
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("blocked")).toHaveTextContent(
+        "unsupported-version",
+      ),
+    );
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(foreign);
+  });
+
+  it("ignores a delayed future-version event after storage has advanced", async () => {
+    renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("blocked")).toHaveTextContent("none"),
+    );
+    const current = JSON.stringify({
+      version: 2,
+      clearRevision: null,
+      records: {},
+    });
+    const staleFuture = JSON.stringify({ version: 3, items: [] });
+    window.localStorage.setItem(STORAGE_KEY, current);
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEY,
+          oldValue: current,
+          newValue: staleFuture,
+          storageArea: window.localStorage,
+          url: window.location.href,
+        }),
+      );
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("blocked")).toHaveTextContent("none"),
+    );
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(current);
   });
 
   it("flags unavailable when the store refuses reads", async () => {
@@ -131,5 +220,113 @@ describe("persistenceBlocked disclosure", () => {
     await waitFor(() =>
       expect(screen.getByTestId("blocked")).toHaveTextContent("unavailable"),
     );
+  });
+
+  it("applies another tab's merged document without echo writes", async () => {
+    const saved = selectionItemFromArtwork(artwork);
+    const another = selectionItemFromArtwork({
+      ...artwork,
+      id: 43,
+      displayTitle: "Another work",
+    });
+    const oldValue = JSON.stringify({ version: 1, items: [saved] });
+    window.localStorage.setItem(STORAGE_KEY, oldValue);
+    renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("items")).toHaveTextContent("42"),
+    );
+
+    const remote = memoryStorage(oldValue);
+    persistSelection(remote, [saved, another]);
+    const newValue = remote.stored();
+    expect(newValue).not.toBeNull();
+    window.localStorage.setItem(STORAGE_KEY, newValue ?? "");
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const event = new StorageEvent("storage", {
+      key: STORAGE_KEY,
+      oldValue,
+      newValue,
+      storageArea: window.localStorage,
+      url: window.location.href,
+    });
+
+    act(() => window.dispatchEvent(event));
+    await waitFor(() => {
+      expect(screen.getByTestId("items")).toHaveTextContent("42,43");
+      expect(screen.getByTestId("announcement")).toHaveTextContent(
+        "Selection updated from another tab",
+      );
+    });
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("ignores a delayed stale event when storage already has newer edits", async () => {
+    const saved = selectionItemFromArtwork(artwork);
+    const another = selectionItemFromArtwork({
+      ...artwork,
+      id: 43,
+      displayTitle: "Another work",
+    });
+    const oldValue = JSON.stringify({ version: 1, items: [saved] });
+    window.localStorage.setItem(STORAGE_KEY, oldValue);
+    renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("items")).toHaveTextContent("42"),
+    );
+
+    const current = memoryStorage(oldValue);
+    persistSelection(current, [saved, another]);
+    const currentValue = current.stored();
+    const stale = memoryStorage(oldValue);
+    persistSelection(stale, [saved]);
+    const staleValue = stale.stored();
+    window.localStorage.setItem(STORAGE_KEY, currentValue ?? "");
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEY,
+          oldValue: currentValue,
+          newValue: staleValue,
+          storageArea: window.localStorage,
+          url: window.location.href,
+        }),
+      );
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("items")).toHaveTextContent("42,43"),
+    );
+    expect(setItem).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(currentValue);
+  });
+
+  it("treats another tab removing the storage key as a clear", async () => {
+    const saved = selectionItemFromArtwork(artwork);
+    const oldValue = JSON.stringify({ version: 1, items: [saved] });
+    window.localStorage.setItem(STORAGE_KEY, oldValue);
+    renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("items")).toHaveTextContent("42"),
+    );
+
+    window.localStorage.removeItem(STORAGE_KEY);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: STORAGE_KEY,
+          oldValue,
+          newValue: null,
+          storageArea: window.localStorage,
+          url: window.location.href,
+        }),
+      );
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("items")).toBeEmptyDOMElement(),
+    );
+    expect(
+      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null").version,
+    ).toBe(2);
   });
 });

@@ -5,30 +5,31 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
 } from "react";
 import type { Artwork } from "./met/normalize";
 
-export const STORAGE_KEY = "meet-the-met.selection";
-/**
- * Stored-payload schema version. v0 wrote a bare SelectionItem[]; v1 wraps
- * it in { version, items } so a future required-field addition can migrate
- * instead of silently dropping the whole selection (needs-work 09-05).
- */
-const SELECTION_VERSION = 1;
+import {
+  applySelectionIntent,
+  createWriterId,
+  emptySelectionDocument,
+  itemListsEqual,
+  localStorageOrNull,
+  mergeSelectionDocuments,
+  parseSelectionDocument,
+  readStoredDocument,
+  type SelectionDocument,
+  type SelectionIntent,
+  type SelectionItem,
+  STORAGE_KEY,
+  type StoredSelectionRead,
+  selectionAspectRatio,
+  selectionDocumentItems,
+  writeSelectionDocument,
+} from "./selection-storage";
 
-export type SelectionItem = Pick<
-  Artwork,
-  | "id"
-  | "displayTitle"
-  | "artist"
-  | "date"
-  | "primaryImage"
-  | "primaryImageSmall"
-  | "imageAspectRatio"
-  | "isPublicDomain"
-  | "rights"
->;
+export * from "./selection-storage";
 
 type SelectionContextValue = {
   items: SelectionItem[];
@@ -69,18 +70,6 @@ export function moveSelectionItem(
   if (!moved) return items;
   next.splice(nextIndex, 0, moved);
   return next;
-}
-
-/**
- * Single recovery policy for a missing or corrupt stored ratio: default to
- * 1. migrateStoredItem and artworkFromSelectionItem share it so a stored
- * item is never recovered differently at parse time vs rebuild time
- * (review 09-14 P3).
- */
-function selectionAspectRatio(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
-    : 1;
 }
 
 export function artworkFromSelectionItem(item: SelectionItem): Artwork {
@@ -126,195 +115,6 @@ export function selectionItemFromArtwork(artwork: Artwork): SelectionItem {
   };
 }
 
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === "string";
-}
-
-function isSelectionItem(value: unknown): value is SelectionItem {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<SelectionItem>;
-  return (
-    typeof item.id === "number" &&
-    typeof item.displayTitle === "string" &&
-    isNullableString(item.artist) &&
-    isNullableString(item.date) &&
-    isNullableString(item.primaryImage) &&
-    isNullableString(item.primaryImageSmall) &&
-    (item.isPublicDomain === null ||
-      typeof item.isPublicDomain === "boolean") &&
-    isNullableString(item.rights) &&
-    typeof item.imageAspectRatio === "number" &&
-    Number.isFinite(item.imageAspectRatio) &&
-    item.imageAspectRatio > 0
-  );
-}
-
-function migrateStoredItem(value: unknown): SelectionItem | null {
-  if (!value || typeof value !== "object") return null;
-  const item = { ...(value as Partial<SelectionItem>) };
-  // primaryImage joined the stored shape after launch — fill it from the
-  // small asset, the same fallback artworkFromSelectionItem applies.
-  item.primaryImage ??= item.primaryImageSmall;
-  item.imageAspectRatio = selectionAspectRatio(item.imageAspectRatio);
-  item.isPublicDomain ??= null;
-  item.rights ??= null;
-  return isSelectionItem(item) ? item : null;
-}
-
-function migrateItems(candidates: unknown): SelectionItem[] {
-  if (!Array.isArray(candidates)) return [];
-  const items: SelectionItem[] = [];
-  const seen = new Set<number>();
-  for (const candidate of candidates) {
-    const item = migrateStoredItem(candidate);
-    // Duplicated ids produce duplicate React keys and divergent remove-all
-    // vs move/has behavior — keep only the first stored copy.
-    if (item && !seen.has(item.id)) {
-      seen.add(item.id);
-      items.push(item);
-    }
-  }
-  return items;
-}
-
-function readEnvelopeItems(stored: unknown): SelectionItem[] {
-  return migrateItems(
-    stored !== null && typeof stored === "object"
-      ? (stored as { items?: unknown }).items
-      : undefined,
-  );
-}
-
-/**
- * Migration table: key = stored `version`, value = reader that turns that
- * payload shape into current items. v0 is the pre-envelope bare array,
- * normalized to { items } before dispatch. Add a reader for every new
- * SELECTION_VERSION so older payloads keep loading; a stored version with
- * no reader belongs to a newer build and must never be re-stamped over
- * (review 09-14 P1). Partial keeps "no reader" inside the type system —
- * without it, indexing claimed every version had a reader and tsc could
- * not see the unsupported-version fallback (review 09-14 P3).
- */
-const SELECTION_MIGRATIONS: Partial<
-  Record<number, (stored: unknown) => SelectionItem[]>
-> = {
-  0: readEnvelopeItems,
-  1: readEnvelopeItems,
-};
-
-/**
- * Read result for the stored payload. "ok" carries usable items (possibly
- * empty); "unsupported-version" means a newer build owns the payload — it
- * hydrates nothing here and is never clobbered.
- */
-export type ParsedStoredSelection =
-  | { status: "ok"; items: SelectionItem[] }
-  | { status: "unsupported-version"; version: number };
-
-/** Parses the raw localStorage payload, dispatching on `version`. */
-export function parseStoredSelection(
-  raw: string | null,
-): ParsedStoredSelection {
-  if (!raw) return { status: "ok", items: [] };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { status: "ok", items: [] };
-  }
-  const version = Array.isArray(parsed)
-    ? 0
-    : parsed !== null && typeof parsed === "object"
-      ? (parsed as { version?: unknown }).version
-      : undefined;
-  if (typeof version !== "number") return { status: "ok", items: [] };
-  const stored = Array.isArray(parsed) ? { items: parsed } : parsed;
-  const migrate = SELECTION_MIGRATIONS[version];
-  return migrate
-    ? { status: "ok", items: migrate(stored) }
-    : { status: "unsupported-version", version };
-}
-
-type SelectionStorage = Pick<Storage, "getItem" | "setItem">;
-
-function localStorageOrNull(): SelectionStorage | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Guarded read that keeps the parse result — the mount effect needs the
- * version status to flag a foreign envelope, which readSelection's
- * items-only return would erase. getItem itself can throw (blocked
- * cookies, SecurityError) even after the accessor succeeded, so the
- * guard lives at this level and both callers share it (review 09-19 P1).
- */
-function readStoredSelection(storage: SelectionStorage): ParsedStoredSelection {
-  try {
-    return parseStoredSelection(storage.getItem(STORAGE_KEY));
-  } catch {
-    return { status: "ok", items: [] };
-  }
-}
-
-export function readSelection(storage: SelectionStorage): SelectionItem[] {
-  const stored = readStoredSelection(storage);
-  // A newer build's envelope hydrates nothing here but stays on disk
-  // for the version that can read it.
-  return stored.status === "ok" ? stored.items : [];
-}
-
-export type PersistSelectionResult =
-  | { status: "persisted" }
-  | { status: "blocked"; reason: "unsupported-version"; version: number }
-  | { status: "blocked"; reason: "unavailable" };
-
-export function persistSelection(
-  storage: SelectionStorage,
-  items: SelectionItem[],
-): PersistSelectionResult {
-  try {
-    // Never re-stamp over an unsupported-version payload: this build
-    // cannot represent it, and overwriting would destroy data a future
-    // migration could still recover (review 09-14 P1). The refusal must
-    // not be silent — saves and clears no-op while the newer payload is
-    // preserved (review 09-14 P3), so callers get an explicit "blocked"
-    // result and the tray discloses it (review 09-19 P1).
-    const stored = parseStoredSelection(storage.getItem(STORAGE_KEY));
-    if (stored.status === "unsupported-version") {
-      console.warn(
-        `[selection] stored payload has version ${stored.version}, which this build cannot read; keeping it on disk and skipping this write`,
-      );
-      return {
-        status: "blocked",
-        reason: "unsupported-version",
-        version: stored.version,
-      };
-    }
-    // An empty selection on a key-less storage stays key-less: writing
-    // here would stamp {"items":[]} for every first-time visitor and
-    // erase the no-key vs empty-selection distinction (needs-work
-    // 09-15 06:16 P3). Pre-existing keys still update (clearing the
-    // last item must persist).
-    if (items.length === 0 && storage.getItem(STORAGE_KEY) === null) {
-      return { status: "persisted" };
-    }
-    storage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ version: SELECTION_VERSION, items }),
-    );
-    return { status: "persisted" };
-  } catch {
-    // Private mode / quota-exceeded: the in-memory tray keeps working,
-    // persistence just degrades for this visit. Mirrors readSelection's
-    // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
-    return { status: "blocked", reason: "unavailable" };
-  }
-}
-
 /**
  * Items and announcement live in ONE reducer state: every action derives
  * its announcement from the state it is transforming, so the live region
@@ -326,6 +126,7 @@ export type SelectionState = { items: SelectionItem[]; announcement: string };
 
 export type SelectionAction =
   | { type: "hydrate"; items: SelectionItem[] }
+  | { type: "replace"; items: SelectionItem[]; announcement?: string }
   | { type: "toggle"; artwork: Artwork }
   | { type: "remove"; objectId: number }
   | { type: "move"; objectId: number; direction: -1 | 1 }
@@ -341,6 +142,12 @@ export function selectionReducer(
   action: SelectionAction,
 ): SelectionState {
   switch (action.type) {
+    case "replace":
+      return {
+        ...state,
+        items: action.items,
+        announcement: action.announcement ?? state.announcement,
+      };
     case "hydrate": {
       if (state.items.length === 0) return { ...state, items: action.items };
       // Pre-hydration edits landed — merge instead of dropping either
@@ -404,49 +211,221 @@ export function selectionReducer(
 export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(selectionReducer, emptySelectionState);
   const { items, announcement } = state;
+  const stateRef = useRef(state);
+  const documentRef = useRef<SelectionDocument>(emptySelectionDocument());
+  const writerRef = useRef("");
+  const pendingIntentsRef = useRef<SelectionIntent[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const [persistenceBlocked, setPersistenceBlocked] =
     useState<SelectionContextValue["persistenceBlocked"]>(null);
 
   useEffect(() => {
+    writerRef.current ||= createWriterId();
+    const announceExternalItems = (document: SelectionDocument) => {
+      const nextItems = selectionDocumentItems(document);
+      if (itemListsEqual(stateRef.current.items, nextItems)) return;
+      const action: SelectionAction = {
+        type: "replace",
+        items: nextItems,
+        announcement: "Selection updated from another tab",
+      };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY && event.key !== null) return;
+      const storage = localStorageOrNull();
+      if (
+        storage &&
+        event.storageArea &&
+        event.storageArea !== window.localStorage
+      ) {
+        return;
+      }
+
+      const eventValue = parseSelectionDocument(event.newValue);
+      let next = documentRef.current;
+      let stored: StoredSelectionRead | null = null;
+      if (storage) {
+        try {
+          stored = readStoredDocument(storage);
+        } catch {
+          setPersistenceBlocked("unavailable");
+        }
+      } else {
+        setPersistenceBlocked("unavailable");
+      }
+
+      if (stored?.status === "unsupported-version") {
+        setPersistenceBlocked("unsupported-version");
+        return;
+      }
+      if (eventValue.status === "unsupported-version" && !stored) {
+        setPersistenceBlocked("unsupported-version");
+        return;
+      }
+
+      // A queued storage event can arrive after a newer write. Read the
+      // current key and treat a still-missing key as the winning clear, so
+      // delayed old values cannot resurrect a removed selection.
+      if (
+        stored?.status === "ok" &&
+        stored.raw === null &&
+        event.newValue !== null
+      ) {
+        next = applySelectionIntent(next, { type: "clear" }, writerRef.current);
+      } else {
+        if (eventValue.status === "ok") {
+          next = mergeSelectionDocuments(next, eventValue.document);
+        }
+        if (stored?.status === "ok") {
+          next = mergeSelectionDocuments(next, stored.document);
+        }
+        if (
+          event.newValue === null &&
+          (!stored || (stored.status === "ok" && stored.raw === null))
+        ) {
+          next = applySelectionIntent(
+            next,
+            { type: "clear" },
+            writerRef.current,
+          );
+        }
+      }
+
+      documentRef.current = next;
+      if (storage && stored?.status === "ok") {
+        const result = writeSelectionDocument(storage, next, stored.raw);
+        setPersistenceBlocked(
+          result.status === "blocked" ? result.reason : null,
+        );
+      }
+      announceExternalItems(next);
+    };
+
+    window.addEventListener("storage", handleStorage);
     const storage = localStorageOrNull();
     if (!storage) {
       // The accessor itself is blocked — every save is a no-op from the
       // first render, so the unavailable state must be disclosed at
       // mount, not after the first doomed write (review 09-19 18:17 P2).
       setPersistenceBlocked("unavailable");
-      dispatch({ type: "hydrate", items: [] });
+      const action: SelectionAction = { type: "hydrate", items: [] };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
       setIsHydrated(true);
-      return;
+      return () => window.removeEventListener("storage", handleStorage);
     }
-    // Detect a foreign envelope at mount, not just at first write — the
-    // notice must show before the user's first save (review 09-19 P1).
-    // The read goes through readStoredSelection so a throwing getItem
-    // hydrates empty instead of crashing the mount effect.
-    const stored = readStoredSelection(storage);
+    let stored: StoredSelectionRead;
+    try {
+      stored = readStoredDocument(storage);
+    } catch {
+      setPersistenceBlocked("unavailable");
+      const action: SelectionAction = { type: "hydrate", items: [] };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+      setIsHydrated(true);
+      return () => window.removeEventListener("storage", handleStorage);
+    }
     if (stored.status === "unsupported-version") {
       setPersistenceBlocked("unsupported-version");
+      const action: SelectionAction = { type: "hydrate", items: [] };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+    } else {
+      documentRef.current = stored.document;
+      const action: SelectionAction = {
+        type: "hydrate",
+        items: selectionDocumentItems(stored.document),
+      };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+      if (stored.needsUpgrade) {
+        try {
+          const latest = readStoredDocument(storage);
+          if (latest.status === "unsupported-version") {
+            setPersistenceBlocked("unsupported-version");
+          } else {
+            const merged = mergeSelectionDocuments(
+              documentRef.current,
+              latest.document,
+            );
+            documentRef.current = merged;
+            const result = writeSelectionDocument(storage, merged, latest.raw);
+            setPersistenceBlocked(
+              result.status === "blocked" ? result.reason : null,
+            );
+          }
+        } catch {
+          setPersistenceBlocked("unavailable");
+        }
+      }
     }
-    dispatch({
-      type: "hydrate",
-      items: stored.status === "ok" ? stored.items : [],
-    });
     setIsHydrated(true);
+    return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
   useEffect(() => {
     if (!isHydrated) return;
+    const intents = pendingIntentsRef.current.splice(0);
+    if (intents.length === 0) return;
     const storage = localStorageOrNull();
-    if (!storage) {
+    let next = documentRef.current;
+    if (storage) {
+      try {
+        const stored = readStoredDocument(storage);
+        if (stored.status === "ok") {
+          next = mergeSelectionDocuments(next, stored.document);
+          for (const intent of intents) {
+            next = applySelectionIntent(next, intent, writerRef.current);
+          }
+          documentRef.current = next;
+          const result = writeSelectionDocument(storage, next, stored.raw);
+          setPersistenceBlocked(
+            result.status === "blocked" ? result.reason : null,
+          );
+          if (result.status === "persisted") {
+            pendingIntentsRef.current = [];
+          }
+        } else {
+          for (const intent of intents) {
+            next = applySelectionIntent(next, intent, writerRef.current);
+          }
+          documentRef.current = next;
+          setPersistenceBlocked("unsupported-version");
+          console.warn(
+            `[selection] stored payload has version ${stored.version}, which this build cannot read; keeping it on disk and skipping this write`,
+          );
+        }
+      } catch {
+        for (const intent of intents) {
+          next = applySelectionIntent(next, intent, writerRef.current);
+        }
+        documentRef.current = next;
+        setPersistenceBlocked("unavailable");
+      }
+    } else {
+      for (const intent of intents) {
+        next = applySelectionIntent(next, intent, writerRef.current);
+      }
+      documentRef.current = next;
       setPersistenceBlocked("unavailable");
-      return;
     }
-    const result = persistSelection(storage, items);
-    // Surface the refusal reason as-is — a quota/private-mode failure
-    // ("unavailable") is the same silent-save class as a foreign
-    // envelope and must not map back to unblocked (review 09-19
-    // 18:17 P2).
-    setPersistenceBlocked(result.status === "blocked" ? result.reason : null);
+
+    const reconciledItems = selectionDocumentItems(next);
+    if (
+      !itemListsEqual(items, reconciledItems) ||
+      !itemListsEqual(stateRef.current.items, reconciledItems)
+    ) {
+      const action: SelectionAction = {
+        type: "replace",
+        items: reconciledItems,
+        announcement: stateRef.current.announcement,
+      };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+    }
   }, [isHydrated, items]);
 
   const has = useCallback(
@@ -454,21 +433,53 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
     [items],
   );
 
-  const toggle = useCallback((artwork: Artwork) => {
-    dispatch({ type: "toggle", artwork });
-  }, []);
+  const dispatchLocal = useCallback(
+    (action: SelectionAction, intent: SelectionIntent) => {
+      const previous = stateRef.current;
+      const next = selectionReducer(previous, action);
+      if (next.items !== previous.items) pendingIntentsRef.current.push(intent);
+      stateRef.current = next;
+      dispatch(action);
+    },
+    [],
+  );
 
-  const remove = useCallback((objectId: number) => {
-    dispatch({ type: "remove", objectId });
-  }, []);
+  const toggle = useCallback(
+    (artwork: Artwork) => {
+      const saved = stateRef.current.items.some(
+        (item) => item.id === artwork.id,
+      );
+      const item = selectionItemFromArtwork(artwork);
+      dispatchLocal(
+        { type: "toggle", artwork },
+        saved
+          ? { type: "remove", objectId: artwork.id }
+          : { type: "add", item },
+      );
+    },
+    [dispatchLocal],
+  );
 
-  const move = useCallback((objectId: number, direction: -1 | 1) => {
-    dispatch({ type: "move", objectId, direction });
-  }, []);
+  const remove = useCallback(
+    (objectId: number) => {
+      dispatchLocal({ type: "remove", objectId }, { type: "remove", objectId });
+    },
+    [dispatchLocal],
+  );
+
+  const move = useCallback(
+    (objectId: number, direction: -1 | 1) => {
+      dispatchLocal(
+        { type: "move", objectId, direction },
+        { type: "move", objectId, direction },
+      );
+    },
+    [dispatchLocal],
+  );
 
   const clear = useCallback(() => {
-    dispatch({ type: "clear" });
-  }, []);
+    dispatchLocal({ type: "clear" }, { type: "clear" });
+  }, [dispatchLocal]);
 
   const value = useMemo(
     () => ({

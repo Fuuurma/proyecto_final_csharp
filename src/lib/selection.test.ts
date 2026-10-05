@@ -1,16 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Artwork } from "./met/normalize";
 import {
+  applySelectionIntent,
   artworkFromSelectionItem,
+  createSelectionDocument,
   emptySelectionState,
+  mergeSelectionDocuments,
   moveSelectionItem,
   parseStoredSelection,
   persistSelection,
   readSelection,
   type SelectionState,
   STORAGE_KEY,
+  selectionDocumentItems,
   selectionItemFromArtwork,
   selectionReducer,
+  serializeSelectionDocument,
 } from "./selection";
 
 const artwork: Artwork = {
@@ -109,7 +114,7 @@ describe("parseStoredSelection", () => {
     });
   });
 
-  it("reads the versioned envelope written by the current build", () => {
+  it("migrates the v1 envelope used by earlier builds", () => {
     const stored = JSON.stringify({ version: 1, items: [item] });
     expect(parseStoredSelection(stored)).toEqual({
       status: "ok",
@@ -161,10 +166,10 @@ describe("parseStoredSelection", () => {
   });
 
   it("flags a stored version with no migration as unsupported", () => {
-    const future = JSON.stringify({ version: 2, items: [item] });
+    const future = JSON.stringify({ version: 3, items: [item] });
     expect(parseStoredSelection(future)).toEqual({
       status: "unsupported-version",
-      version: 2,
+      version: 3,
     });
   });
 
@@ -220,13 +225,12 @@ describe("selection storage read/write", () => {
     };
   }
 
-  it("persists the {version, items} envelope under the selection key", () => {
+  it("persists a versioned merge document under the selection key", () => {
     const storage = createStorageStub();
     persistSelection(storage, [item]);
-    expect(JSON.parse(storage.stored() ?? "null")).toEqual({
-      version: 1,
-      items: [item],
-    });
+    const stored = JSON.parse(storage.stored() ?? "null");
+    expect(stored.version).toBe(2);
+    expect(readSelection(storage)).toEqual([item]);
   });
 
   it("first-time visitor with an empty selection creates no storage key", () => {
@@ -247,17 +251,17 @@ describe("selection storage read/write", () => {
     expect(storage.stored()).not.toBeNull();
   });
 
-  it("hydrate-then-write upgrades a v0 bare array to the v1 envelope", () => {
+  it("hydrate-then-write upgrades a v0 bare array to the v2 envelope", () => {
     const legacy = { ...item } as Partial<typeof item>;
     delete legacy.primaryImage;
     const storage = createStorageStub(JSON.stringify([legacy]));
 
     persistSelection(storage, readSelection(storage));
 
-    expect(JSON.parse(storage.stored() ?? "null")).toEqual({
-      version: 1,
-      items: [{ ...legacy, primaryImage: legacy.primaryImageSmall }],
-    });
+    expect(JSON.parse(storage.stored() ?? "null").version).toBe(2);
+    expect(readSelection(storage)).toEqual([
+      { ...legacy, primaryImage: legacy.primaryImageSmall },
+    ]);
   });
 
   it("bogus aspect ratios normalize to square through a persist round-trip", () => {
@@ -294,7 +298,7 @@ describe("selection storage read/write", () => {
   });
 
   it("never clobbers an envelope written by a newer build", () => {
-    const foreign = JSON.stringify({ version: 2, items: [item] });
+    const foreign = JSON.stringify({ version: 3, items: [item] });
     const storage = createStorageStub(foreign);
 
     expect(readSelection(storage)).toEqual([]);
@@ -304,26 +308,26 @@ describe("selection storage read/write", () => {
   });
 
   it("warns instead of silently no-oping when a newer build owns the payload", () => {
-    const foreign = JSON.stringify({ version: 2, items: [item] });
+    const foreign = JSON.stringify({ version: 3, items: [item] });
     const storage = createStorageStub(foreign);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     persistSelection(storage, [item]);
 
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("version 2"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("version 3"));
     expect(storage.stored()).toBe(foreign);
     warn.mockRestore();
   });
 
   it("reports blocked/unsupported-version so the UI can disclose unsaved changes", () => {
-    const foreign = JSON.stringify({ version: 2, items: [item] });
+    const foreign = JSON.stringify({ version: 3, items: [item] });
     const storage = createStorageStub(foreign);
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
     expect(persistSelection(storage, [item])).toEqual({
       status: "blocked",
       reason: "unsupported-version",
-      version: 2,
+      version: 3,
     });
     expect(persistSelection(createStorageStub(), [item])).toEqual({
       status: "persisted",
@@ -334,10 +338,162 @@ describe("selection storage read/write", () => {
   it("re-stamps over a corrupt payload, which holds nothing recoverable", () => {
     const storage = createStorageStub("{not json");
     persistSelection(storage, [item]);
-    expect(JSON.parse(storage.stored() ?? "null")).toEqual({
-      version: 1,
-      items: [item],
-    });
+    expect(JSON.parse(storage.stored() ?? "null").version).toBe(2);
+    expect(readSelection(storage)).toEqual([item]);
+  });
+});
+
+describe("cross-tab selection document", () => {
+  const first = selectionItemFromArtwork({
+    ...artwork,
+    id: 1,
+    displayTitle: "First",
+  });
+  const second = selectionItemFromArtwork({
+    ...artwork,
+    id: 2,
+    displayTitle: "Second",
+  });
+  const third = selectionItemFromArtwork({
+    ...artwork,
+    id: 3,
+    displayTitle: "Third",
+  });
+
+  it("joins simultaneous saves in a deterministic order regardless of arrival order", () => {
+    const base = createSelectionDocument([first]);
+    const tabA = applySelectionIntent(
+      base,
+      { type: "add", item: second },
+      "tab-a",
+    );
+    const tabB = applySelectionIntent(
+      base,
+      { type: "add", item: third },
+      "tab-b",
+    );
+
+    const aThenB = mergeSelectionDocuments(tabA, tabB);
+    const bThenA = mergeSelectionDocuments(tabB, tabA);
+    expect(selectionDocumentItems(aThenB).map((item) => item.id)).toEqual([
+      2, 3, 1,
+    ]);
+    expect(serializeSelectionDocument(aThenB)).toBe(
+      serializeSelectionDocument(bThenA),
+    );
+  });
+
+  it("keeps document merge idempotent and associative", () => {
+    const base = createSelectionDocument([first]);
+    const tabA = applySelectionIntent(
+      base,
+      { type: "add", item: second },
+      "tab-a",
+    );
+    const tabB = applySelectionIntent(
+      base,
+      { type: "add", item: third },
+      "tab-b",
+    );
+    const tabC = applySelectionIntent(
+      base,
+      { type: "remove", objectId: first.id },
+      "tab-c",
+    );
+
+    expect(mergeSelectionDocuments(tabA, tabA)).toEqual(tabA);
+    expect(
+      mergeSelectionDocuments(mergeSelectionDocuments(tabA, tabB), tabC),
+    ).toEqual(
+      mergeSelectionDocuments(tabA, mergeSelectionDocuments(tabB, tabC)),
+    );
+  });
+
+  it("keeps an unseen remote save when a stale tab removes another item", () => {
+    const stale = createSelectionDocument([first]);
+    const remoteSave = applySelectionIntent(
+      stale,
+      { type: "add", item: second },
+      "tab-b",
+    );
+    const merged = mergeSelectionDocuments(stale, remoteSave);
+    const localRemove = applySelectionIntent(
+      merged,
+      { type: "remove", objectId: first.id },
+      "tab-a",
+    );
+
+    expect(selectionDocumentItems(localRemove)).toEqual([second]);
+  });
+
+  it("does not let a stale reorder resurrect a removed work", () => {
+    const base = createSelectionDocument([first, second]);
+    const removed = applySelectionIntent(
+      base,
+      { type: "remove", objectId: first.id },
+      "tab-a",
+    );
+    const staleMove = applySelectionIntent(
+      base,
+      { type: "move", objectId: second.id, direction: -1 },
+      "tab-b",
+    );
+
+    expect(
+      selectionDocumentItems(mergeSelectionDocuments(removed, staleMove)).map(
+        (item) => item.id,
+      ),
+    ).toEqual([2]);
+  });
+
+  it("keeps clear as a barrier to stale snapshots and later saves", () => {
+    const stale = createSelectionDocument([first]);
+    const cleared = applySelectionIntent(stale, { type: "clear" }, "tab-a");
+    expect(
+      selectionDocumentItems(mergeSelectionDocuments(cleared, stale)),
+    ).toEqual([]);
+
+    const reopened = applySelectionIntent(
+      cleared,
+      { type: "add", item: second },
+      "tab-b",
+    );
+    expect(
+      selectionDocumentItems(mergeSelectionDocuments(stale, reopened)),
+    ).toEqual([second]);
+  });
+
+  it("resolves a simultaneous clear and save by the documented writer tie-break", () => {
+    const empty = createSelectionDocument([]);
+    const clearWins = mergeSelectionDocuments(
+      applySelectionIntent(empty, { type: "clear" }, "tab-z"),
+      applySelectionIntent(empty, { type: "add", item: first }, "tab-a"),
+    );
+    const addWins = mergeSelectionDocuments(
+      applySelectionIntent(empty, { type: "clear" }, "tab-a"),
+      applySelectionIntent(empty, { type: "add", item: first }, "tab-z"),
+    );
+
+    expect(selectionDocumentItems(clearWins)).toEqual([]);
+    expect(selectionDocumentItems(addWins)).toEqual([first]);
+  });
+
+  it("prefers a removal if two records collide on the same revision", () => {
+    const empty = createSelectionDocument([]);
+    const saved = applySelectionIntent(
+      empty,
+      { type: "add", item: first },
+      "same-writer",
+    );
+    const removed = applySelectionIntent(
+      empty,
+      { type: "remove", objectId: first.id },
+      "same-writer",
+    );
+
+    expect(
+      selectionDocumentItems(mergeSelectionDocuments(saved, removed)),
+    ).toEqual([]);
   });
 });
 
