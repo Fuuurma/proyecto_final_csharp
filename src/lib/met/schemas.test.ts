@@ -26,4 +26,17 @@ describe("metObjectSchema null tolerance", () => {
     const result = metObjectSchema.safeParse({ objectID: 2 });
     expect(result.success).toBe(true);
   });
+
+  // needs-work 09-27 P1: the null tolerance above only covered
+  // top-level fields — constituent and measurement MEMBERS also carry
+  // explicit nulls upstream, and .optional()-only inner fields failed
+  // the whole object parse, surfacing as phantom hydration failures.
+  it("accepts explicit nulls inside constituent and measurement members", () => {
+    const result = metObjectSchema.safeParse({
+      objectID: 3,
+      constituents: [{ role: null, name: null }],
+      measurements: [{ elementName: null, elementMeasurements: null }],
+    });
+    expect(result.success).toBe(true);
+  });
 });

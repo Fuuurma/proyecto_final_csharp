@@ -32,6 +32,22 @@ describe("explore tail-fill error contract", () => {
     expect(callback).toContain('next.status === "error"');
     expect(callback).toContain("throw");
   });
+
+  // needs-work 09-26 #289 P1: a curated-source page is the degraded
+  // review-set substitute, not live page content — it must throw rather
+  // than append committed works into a live grid, and the loader must
+  // not cache substitute rows under the live-query key where a later
+  // fill would replay them.
+  it("rejects curated substitutes at both fill seams", () => {
+    const start = exploreSource.indexOf("async (nextPage) => {");
+    const end = exploreSource.indexOf("return next.artworks", start);
+    const callback = exploreSource.slice(start, end);
+    expect(callback).toContain('next.source === "curated"');
+    const cacheCall = exploreSource.indexOf("cachePages(refillCache");
+    expect(cacheCall).toBeGreaterThan(-1);
+    const guard = exploreSource.slice(Math.max(0, cacheCall - 400), cacheCall);
+    expect(guard).toContain('result.source !== "curated"');
+  });
 });
 
 // needs-work 09-26 P2: resolvedDepartmentId prefers departmentId, but

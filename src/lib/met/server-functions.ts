@@ -262,8 +262,17 @@ export const searchCollection = createServerFn({ method: "GET" })
       const artworks = takeOpenAccessPage(hydrated);
 
       // Genuine hydration failures: some promised rows did not deliver.
-      // Degrade to the curated review set with the honest notice.
-      if (hydrated.length < pageIds.length) {
+      // The curated substitution is a page-1-only degradation for a page
+      // that produced NOTHING usable — when live works did load they are
+      // shown as a met-source partial, never discarded for substitutes
+      // (needs-work 09-27 #375 P1). And committed rows must never append
+      // into a live stream on page >= 2 — the fill would present them as
+      // search results (09-26 #289 P1).
+      if (
+        hydrated.length < pageIds.length &&
+        artworks.length === 0 &&
+        page === 1
+      ) {
         const fallback = curatedSearchResult(
           q,
           mappedDepartment === missingDepartmentFilter
@@ -391,7 +400,12 @@ export const searchCollection = createServerFn({ method: "GET" })
         true,
       );
 
-      if (fallback.artworks.length > 0) {
+      // Substitution is page-1-only and only for failures that mean
+      // upstream trouble: a 4xx says our request was malformed, so
+      // "answering slowly" would misreport it (09-26 #289 P1).
+      const substitutionHonest =
+        page === 1 && !(error instanceof MetApiError && error.kind === "4xx");
+      if (substitutionHonest && fallback.artworks.length > 0) {
         return {
           ...fallback,
           status: "partial",

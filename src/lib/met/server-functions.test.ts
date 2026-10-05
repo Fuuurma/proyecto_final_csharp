@@ -237,7 +237,11 @@ describe("searchCollection", () => {
     expect(result.artworks).toHaveLength(24);
   });
 
-  it("hydration failures degrade to partial + curated fallback notice", async () => {
+  it("partial hydration keeps the loaded live works — it never discards them for curated", async () => {
+    // needs-work 09-27 #375 P1: a partial window with any curated match
+    // used to drop every successfully hydrated live artwork and answer
+    // with committed substitutes. Loaded rows are real results; the
+    // honest contract is met-source partial.
     setFixtureMode(false);
     fetchMetSearchIds.mockResolvedValueOnce({
       total: 100,
@@ -251,8 +255,83 @@ describe("searchCollection", () => {
       data: { q: "waves", department: "all", page: 1 },
     });
     expect(result.status).toBe("partial");
+    expect(result.source).toBe("met");
+    expect(result.artworks.map((a) => a.id)).toEqual([1, 2]);
+    expect(result.message).toMatch(/could not be loaded/i);
+  });
+
+  it("page-1 hydration failure with zero usable still substitutes the review set", async () => {
+    // The curated substitution survives ONLY as the designed page-1
+    // degradation for a live page that delivered nothing at all.
+    setFixtureMode(false);
+    fetchMetSearchIds.mockResolvedValueOnce({
+      total: 100,
+      objectIds: Array.from({ length: 36 }, (_, i) => i + 1),
+      preFiltered: true,
+    });
+    fetchMetObjects.mockResolvedValueOnce([
+      { ...artwork(1), isPublicDomain: false },
+      { ...artwork(2), isPublicDomain: false },
+    ]);
+
+    const result = await searchCollection({
+      data: { q: "waves", department: "all", page: 1 },
+    });
+    expect(result.status).toBe("partial");
     expect(result.source).toBe("curated");
     expect(result.message).toMatch(/answering slowly/);
+  });
+
+  it("page >= 2 hydration failure never substitutes curated rows into a live stream", async () => {
+    // needs-work 09-26 #289 P1: committed rows appended under a live
+    // query's later pages present review-set works as search results.
+    setFixtureMode(false);
+    fetchMetSearchIds.mockResolvedValueOnce({
+      total: 100,
+      objectIds: Array.from({ length: 60 }, (_, i) => i + 1),
+      preFiltered: true,
+    });
+    // Window shortfall AND nothing usable — the strongest case for
+    // substitution; even this must stay met-source on a later page.
+    fetchMetObjects.mockResolvedValueOnce([
+      { ...artwork(25), isPublicDomain: false },
+    ]);
+
+    const result = await searchCollection({
+      data: { q: "waves", department: "all", page: 2 },
+    });
+    expect(result.status).toBe("partial");
+    expect(result.source).toBe("met");
+    expect(result.artworks).toEqual([]);
+  });
+
+  it("page >= 2 upstream failure is an honest error, not a curated grid", async () => {
+    setFixtureMode(false);
+    fetchMetSearchIds.mockRejectedValueOnce(new Error("upstream down"));
+
+    const result = await searchCollection({
+      data: { q: "waves", department: "all", page: 2 },
+    });
+    expect(result.status).toBe("error");
+    expect(result.source).toBe("met");
+    expect(result.artworks).toEqual([]);
+  });
+
+  it("a 4xx search failure never claims the collection is answering slowly", async () => {
+    // A client error is not upstream trouble — substituting committed
+    // works under "answering slowly" misreports the cause.
+    setFixtureMode(false);
+    fetchMetSearchIds.mockRejectedValueOnce(
+      new MetApiError("4xx", "bad request", 400),
+    );
+
+    const result = await searchCollection({
+      data: { q: "waves", department: "all", page: 1 },
+    });
+    expect(result.status).toBe("error");
+    expect(result.source).toBe("met");
+    expect(result.failure).toBe("4xx");
+    expect(result.message).not.toMatch(/answering slowly/);
   });
 
   it("an index that reports matches but returns no ids is partial, not empty", async () => {

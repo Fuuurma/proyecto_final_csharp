@@ -278,7 +278,10 @@ function Explore() {
     setFillFailed(false);
     setFillExhausted(false);
     const cacheKey = [query, activeDepartment, departmentId];
-    if (live && result.status !== "error") {
+    // A curated-source result is the degraded page-1 substitute — its
+    // committed rows must not be cached under the live-query key, or a
+    // later deep-page fill replays them as search results (09-26 P1).
+    if (live && result.status !== "error" && result.source !== "curated") {
       cachePages(refillCache, pageCacheKey(cacheKey, page), result.artworks);
     }
     if (page <= 1 || shownPath || !live) {
@@ -310,7 +313,11 @@ function Explore() {
             // and let the zero-yield counter blame the index; throwing
             // routes to the honest fillFailed handler and leaves the
             // page uncached (needs-work 09-25 P1).
-            if (next.status === "error") {
+            // source "curated" is the same lie through a different
+            // door: committed substitutes can never join a live fill —
+            // throw so the page stays uncached and uncounted (09-26
+            // #289 P1).
+            if (next.status === "error" || next.source === "curated") {
               throw new Error(next.message ?? "Met collection search");
             }
             return next.artworks;
@@ -356,6 +363,7 @@ function Explore() {
     shownPath,
     result.artworks,
     result.status,
+    result.source,
   ]);
 
   function loadMore() {

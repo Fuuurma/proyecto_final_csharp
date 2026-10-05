@@ -1,13 +1,17 @@
 import { z } from "zod";
 
+// Nested members carry explicit nulls upstream just like the top-level
+// fields do — .optional() alone rejects null and fails the whole object
+// parse, which surfaces downstream as a phantom hydration failure
+// (needs-work 09-27 P1). .nullish() covers both absent and null.
 const constituentSchema = z.looseObject({
-  role: z.string().optional(),
-  name: z.string().optional(),
+  role: z.string().nullish(),
+  name: z.string().nullish(),
 });
 
 const measurementSchema = z.looseObject({
-  elementName: z.string().optional(),
-  elementMeasurements: z.record(z.string(), z.number()).optional(),
+  elementName: z.string().nullish(),
+  elementMeasurements: z.record(z.string(), z.number()).nullish(),
 });
 
 export const metObjectSchema = z.looseObject({
