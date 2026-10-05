@@ -208,11 +208,17 @@ export function selectionReducer(
   }
 }
 
+// Documents are only ever replaced, never mutated in place — so the
+// ref's initial value can be a module constant instead of a factory
+// call re-evaluated on every render (react-doctor
+// rerender-lazy-ref-init). Same sharing as emptySelectionState above.
+const INITIAL_SELECTION_DOCUMENT = emptySelectionDocument();
+
 export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(selectionReducer, emptySelectionState);
   const { items, announcement } = state;
   const stateRef = useRef(state);
-  const documentRef = useRef<SelectionDocument>(emptySelectionDocument());
+  const documentRef = useRef<SelectionDocument>(INITIAL_SELECTION_DOCUMENT);
   const writerRef = useRef("");
   const pendingIntentsRef = useRef<SelectionIntent[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
