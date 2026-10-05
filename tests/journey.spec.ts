@@ -7,6 +7,39 @@ function selectionNav(page: Page) {
     .getByRole("link", { name: /^Selection/ });
 }
 
+/**
+ * A SaveButton, gated on hydration rather than on enabled-ness.
+ *
+ * save-button.tsx refuses clicks until the stored selection has loaded
+ * (`if (!isHydrated) return;`) and DELIBERATELY never sets `disabled` —
+ * pinned in src/components/save-button.test.tsx, which asserts both
+ * `if (!isHydrated) return;` and `not.toContain("disabled={!isHydrated}")`
+ * so the control cannot flash disabled on first paint. The handler also
+ * calls preventDefault, so there is nothing for the browser to do either.
+ *
+ * The consequence for a test: the button reads `toBeEnabled()` for the
+ * whole pre-hydration window. A click in that window is accepted by the
+ * browser and dropped by the handler, so the button never flips to
+ * "Remove ..." and the assertion times out. That was a real flake, not a
+ * theory: "Explore cards can save a work into the local hanging" failed
+ * on the first attempt and passed only on retry, six runs in.
+ *
+ * `aria-busy` is the contract the component actually publishes, so wait
+ * on that. The timeout is generous because a cold dev server compiling
+ * /art/<id> can take a while to hand over to the client.
+ */
+function saveButton(page: Page, name: RegExp) {
+  return page.getByRole("button", { name });
+}
+
+async function clickSave(page: Page, name: RegExp) {
+  const button = saveButton(page, name);
+  await expect(button).toHaveAttribute("aria-busy", "false", {
+    timeout: 15_000,
+  });
+  await button.click();
+}
+
 test("Home → Explore → detail → Save → Selection", async ({ page }) => {
   await page.goto("/");
   await expect(
@@ -41,9 +74,7 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
     }),
   ).toBeVisible();
 
-  await page
-    .getByRole("button", { name: /Save Wheat Field with Cypresses/ })
-    .click();
+  await clickSave(page, /Save Wheat Field with Cypresses/);
   await expect(
     page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
   ).toBeVisible();
@@ -92,8 +123,15 @@ test("selection edits synchronize across open tabs", async ({
   const saveSunflowers = otherTab.getByRole("button", {
     name: /Save Sunflowers/,
   });
-  await expect(saveWheat).toBeEnabled();
-  await expect(saveSunflowers).toBeEnabled();
+  // Enabled is not a readiness signal here — save-button.tsx stays
+  // enabled through the pre-hydration window on purpose. aria-busy is
+  // what the component actually publishes.
+  await expect(saveWheat).toHaveAttribute("aria-busy", "false", {
+    timeout: 15_000,
+  });
+  await expect(saveSunflowers).toHaveAttribute("aria-busy", "false", {
+    timeout: 15_000,
+  });
 
   await saveWheat.click();
   await expect(
@@ -430,9 +468,7 @@ test("Departments index opens a review room and a live department", async ({
 
 test("Selection hanging can be reordered", async ({ page }) => {
   await page.goto("/art/436535");
-  await page
-    .getByRole("button", { name: /Save Wheat Field with Cypresses/ })
-    .click();
+  await clickSave(page, /Save Wheat Field with Cypresses/);
   await expect(
     page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
   ).toBeVisible();
@@ -442,7 +478,7 @@ test("Selection hanging can be reordered", async ({ page }) => {
     .getByRole("link", { name: /Sunflowers/ })
     .click();
   await expect(page).toHaveURL(/\/art\/436524$/);
-  await page.getByRole("button", { name: /Save Sunflowers/ }).click();
+  await clickSave(page, /Save Sunflowers/);
   await expect(
     page.getByRole("button", { name: /Remove Sunflowers/ }),
   ).toBeVisible();
@@ -500,7 +536,9 @@ test("Explore cards can save a work into the local hanging", async ({
     name: "Save Wheat Field with Cypresses to your selection",
   });
 
-  await expect(saveButton).toBeEnabled();
+  await expect(saveButton).toHaveAttribute("aria-busy", "false", {
+    timeout: 15_000,
+  });
   await saveButton.click();
   await expect(
     wheatCard.getByRole("button", {
