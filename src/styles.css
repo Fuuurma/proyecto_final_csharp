@@ -23,6 +23,12 @@
   --serif: "Newsreader Variable", "Newsreader", Georgia, serif;
   --sans: "DM Sans Variable", "DM Sans", Helvetica, Arial, sans-serif;
   --mono: "DM Mono", "SFMono-Regular", Consolas, monospace;
+  /* Header height drives the header inner min-height AND the sticky top
+     offset of the collection-index intro — which is a sibling of the
+     header, not a descendant, so the token must live on :root for the
+     intro to resolve it. Keep it in sync with the header inner
+     min-heights (grok 09-10 18:45 #3, 10-05 #1). */
+  --header-h: 76px;
   --background: var(--paper);
   --foreground: var(--ink);
   --card: var(--white);
@@ -223,10 +229,6 @@ img {
 }
 
 .site-header {
-  /* Sticky children (collection-index intro) offset from this token —
-     keep it in sync with the inner min-heights below (grok 09-10
-     18:45 #3: the intro stuck 44px under the header). */
-  --header-h: 76px;
   position: sticky;
   top: 0;
   z-index: 40;
@@ -2960,7 +2962,7 @@ body:has(.selection-tray.is-collapsed) {
     width: min(100% - 2rem, 1440px);
   }
 
-  .site-header {
+  :root {
     --header-h: 68px;
   }
 
