@@ -60,6 +60,19 @@ describe("save-button hydration state", () => {
  * stylesheet selector keyed on it.
  */
 describe("save-button saved state", () => {
+  it("keeps the visible Save label in the unsaved accessible name", () => {
+    render(
+      <SelectionProvider>
+        <SaveButton artwork={artwork} />
+      </SelectionProvider>,
+    );
+    const button = screen.getByRole("button", {
+      name: "Save Probe to your selection",
+    });
+    expect(button.textContent).toContain("Save");
+    expect(button.getAttribute("aria-label")).toContain("Save");
+  });
+
   it("marks a stored artwork as pressed, with no is-saved class", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -86,8 +99,10 @@ describe("save-button saved state", () => {
     const button = screen.getByRole("button");
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.getAttribute("aria-label")).toBe(
-      "Remove Probe from your selection",
+      "Saved — Remove Probe from your selection",
     );
+    expect(button.textContent).toContain("Saved");
+    expect(button.getAttribute("aria-label")).toContain("Saved");
     expect(button.className).toContain("save-button");
     expect(button.className).not.toContain("is-saved");
   });
