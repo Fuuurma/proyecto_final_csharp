@@ -140,7 +140,7 @@ function Home() {
                 <ArtworkImage artwork={artwork} />
               </Link>
               <div className="home-gallery__caption">
-                <span className="home-gallery__classification mono">
+                <span className="home-gallery__classification">
                   {artwork.classification ?? "Collection object"}
                 </span>
                 <h3>
@@ -160,9 +160,12 @@ function Home() {
         </div>
 
         <div className="home-gallery__footer">
-          <span className="mono">A larger room, still bounded</span>
+          <span className="mono">
+            {homeGalleryArtworks.length} of the {curatedArtworks.length} review
+            works hang here
+          </span>
           <Link to="/explore" className="link-action">
-            Open all {curatedArtworks.length} objects{" "}
+            Open the {curatedArtworks.length}-work review set{" "}
             <span aria-hidden="true">→</span>
           </Link>
         </div>
@@ -261,7 +264,7 @@ function Home() {
         className="collection-note page-frame"
         aria-labelledby="collection-note-heading"
       >
-        <div className="collection-note__mark mono">OA</div>
+        <div className="collection-note__mark">Open Access</div>
         <div className="collection-note__copy">
           <span className="eyebrow">Open by design</span>
           <h2 id="collection-note-heading">The source stays in view.</h2>

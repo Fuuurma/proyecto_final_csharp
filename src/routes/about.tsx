@@ -53,7 +53,15 @@ function About() {
         </div>
         {sourceArtwork ? (
           <figure className="about-hero__image">
-            <ArtworkImage artwork={sourceArtwork} size="large" eager />
+            {/* The page's subject object should open like every other
+                record image (grok 09-23 P2). */}
+            <Link
+              to="/art/$objectId"
+              params={{ objectId: String(sourceArtwork.id) }}
+              className="about-hero__image-link"
+            >
+              <ArtworkImage artwork={sourceArtwork} size="large" eager />
+            </Link>
             <figcaption>
               <span className="mono">Source object</span>
               <span>
@@ -89,16 +97,18 @@ function About() {
             intact image proportions, local selections, and metadata that tells
             you when a field is missing instead of filling the silence.
           </p>
-          <Link
-            to="/explore"
-            search={{ path: "van-gogh-late-light" }}
-            className="link-action"
-          >
-            Explore a curated path <span aria-hidden="true">→</span>
-          </Link>
-          <Link to="/departments" className="link-action">
-            Browse departments <span aria-hidden="true">→</span>
-          </Link>
+          <div className="about-page__cta">
+            <Link
+              to="/explore"
+              search={{ path: "van-gogh-late-light" }}
+              className="link-action"
+            >
+              Explore a curated path <span aria-hidden="true">→</span>
+            </Link>
+            <Link to="/departments" className="link-action">
+              Browse departments <span aria-hidden="true">→</span>
+            </Link>
+          </div>
         </section>
       </div>
 

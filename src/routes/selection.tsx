@@ -121,7 +121,7 @@ function Selection() {
                   if (typeof window !== "undefined") window.print();
                 }}
               >
-                Print ledger
+                Print this view
               </Button>
               <Separator orientation="vertical" aria-hidden="true" />
               <AlertDialog>
@@ -255,9 +255,12 @@ function CopyListButton({ items }: { items: SelectionItem[] }) {
       size="sm"
       className="button-quiet"
       onClick={handleCopy}
-      aria-label="Copy saved works list to clipboard"
     >
-      {copyFailed ? "Copy failed" : copied ? "List copied" : "Copy list"}
+      {copyFailed
+        ? "Copy failed"
+        : copied
+          ? "List copied"
+          : "Copy list as text"}
     </Button>
   );
 }

@@ -14,10 +14,9 @@ export function footerCues(pathname: string): FooterCue[] {
     return [{ keys: ["/"], label: "Focus Explore search" }];
   }
   if (/^\/art\/[^/]+$/.test(pathname)) {
-    return [
-      { keys: ["←", "→"], label: "Flip object records" },
-      { keys: ["Esc"], label: "Close inspection" },
-    ];
+    // Esc closes the inspect dialog only while it is open — advertising
+    // it in the default closed state was a dead cue (needs-work 09-27).
+    return [{ keys: ["←", "→"], label: "Flip object records" }];
   }
   return [];
 }

@@ -2,8 +2,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
 :root {
   --paper: #f3f1eb;
   --paper-deep: #e9e6dd;
@@ -335,6 +333,8 @@ img {
 }
 
 .site-header__note {
+  /* A real path, not decorative copy: the provenance line links to the
+     About note that substantiates it (grok 09-16). */
   justify-self: end;
   margin: 0;
   color: var(--archive);
@@ -342,6 +342,13 @@ img {
   font-size: 9px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-decoration: none;
+}
+
+.site-header__note:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
 }
 
 .hero {
@@ -376,14 +383,18 @@ img {
 
 .hero__copy h1,
 .not-found h1 {
-  max-width: 12ch;
+  /* The display line serves the artwork — a huge-type ceiling that leaves
+     it no room is a named anti-pattern (DESIGN.md); 16ch + balance keeps
+     the red italic phrase whole (grok 09-16/17). */
+  max-width: 16ch;
   margin: 1.15rem 0 1.35rem;
   padding-bottom: 0.12em;
   font-family: var(--serif);
-  font-size: clamp(3rem, 5.2vw, 5.25rem);
+  font-size: clamp(2.75rem, 4.2vw, 3.75rem);
   font-weight: 400;
-  letter-spacing: -0.055em;
-  line-height: 1.02;
+  letter-spacing: -0.05em;
+  line-height: 1.05;
+  text-wrap: balance;
 }
 
 .hero__copy h1 em {
@@ -576,7 +587,7 @@ img {
   align-items: end;
   gap: 4rem;
   padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 
 .home-gallery__intro h2 {
@@ -678,7 +689,6 @@ img {
 
 .home-gallery__caption h3 {
   margin: 0.4rem 0 0.35rem;
-  overflow-wrap: anywhere;
   font-family: var(--serif);
   font-size: clamp(1.15rem, 1.8vw, 1.7rem);
   font-weight: 400;
@@ -696,7 +706,11 @@ img {
 }
 
 .home-gallery__classification {
-  text-transform: none;
+  /* Classification is metadata, not an index field — sans face, archive
+     ink (grok 09-14: mono is for accession numbers and coordinates). */
+  color: var(--archive);
+  font-family: var(--sans);
+  font-size: 12px;
 }
 
 /* Artist byline in the grotesk voice: DESIGN.md reserves mono for
@@ -713,7 +727,7 @@ img {
   gap: 2rem;
   margin-top: clamp(3rem, 7vw, 7rem);
   padding-top: 1rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .paths {
@@ -832,7 +846,7 @@ img {
 .collection-index__list {
   display: grid;
   gap: 0;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .collection-index__item {
@@ -885,7 +899,7 @@ img {
   gap: 2rem 4rem;
   align-items: end;
   padding-bottom: 2.5rem;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 
 .departments-heading h1 {
@@ -946,7 +960,7 @@ img {
   margin: 1.5rem 0 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .department-ledger__item {
@@ -1071,7 +1085,7 @@ img {
   grid-template-columns: minmax(12rem, 0.65fr) minmax(0, 1.35fr);
   gap: clamp(2rem, 7vw, 8rem);
   padding-block: 1.5rem 8rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .about-notes__intro h2 {
@@ -1087,7 +1101,7 @@ img {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .about-notes__list article {
@@ -1123,16 +1137,21 @@ img {
   align-items: start;
   margin-bottom: 7rem;
   padding: 1.75rem 0;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
   background: transparent;
   color: var(--ink);
 }
 
 .collection-note__mark {
-  color: var(--red);
-  font-size: 1.1rem;
+  /* A source cue, not chrome: spelled out at caption size rather than a
+     cryptic red monogram (grok 09-16). */
+  color: var(--archive);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 .collection-note__copy h2 {
@@ -1193,12 +1212,8 @@ img {
   opacity: 1;
 }
 
-.artwork-card:hover .artwork-image img,
-.home-gallery__item:hover .artwork-image img,
-.path-card:hover .artwork-image img,
-.collection-index__item:hover .artwork-image img {
-  transform: scale(1.02);
-}
+/* No hover zoom on the artwork itself — a scale(1.02) decorates the
+   record image; preserved proportions are the promise (grok 09-15). */
 
 .artwork-image__missing {
   display: flex;
@@ -1768,7 +1783,6 @@ img {
 
 .artwork-card h3 {
   margin: 0.4rem 0 0;
-  overflow-wrap: anywhere;
   font-family: var(--serif);
   font-size: clamp(1.15rem, 1.6vw, 1.5rem);
   font-weight: 400;
@@ -2191,7 +2205,6 @@ img {
   max-width: 22ch;
   margin: 0.85rem 0 0;
   padding-bottom: 0.08em;
-  overflow-wrap: anywhere;
   font-family: var(--serif);
   font-size: clamp(2.4rem, 3.8vw, 3.7rem);
   font-weight: 400;
@@ -2313,7 +2326,7 @@ img {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   margin-bottom: 6rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
 }
 
@@ -2408,7 +2421,11 @@ img {
 }
 
 .artwork-views__item.is-active {
+  /* Color alone can't carry the selected view — the border thickens too
+     (padding shrinks to keep the box identical) (grok 09-23 P2). */
+  padding: calc(0.4rem - 1px);
   border-color: var(--red);
+  border-width: 2px;
 }
 
 .detail-tags {
@@ -2580,7 +2597,7 @@ body:has(.selection-tray.is-collapsed) {
 
 .selection-empty {
   min-height: 28rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .selection-toolbar {
@@ -2671,7 +2688,7 @@ body:has(.selection-tray.is-collapsed) {
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: 2.5rem 1.5rem;
   padding-block: 2rem 6rem;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 
 .selection-row {
@@ -2683,7 +2700,9 @@ body:has(.selection-tray.is-collapsed) {
 
 .selection-row__index {
   margin-right: 0.55rem;
-  color: var(--red);
+  /* Ordinals are archival index data, not state — the accent stays
+     reserved for meaningful moments (grok 09-17). */
+  color: var(--archive);
 }
 
 .selection-row__image {
@@ -2750,7 +2769,9 @@ body:has(.selection-tray.is-collapsed) {
 }
 
 .icon-button:disabled {
-  color: var(--rule);
+  /* --rule (~1.3:1) read as invisible rather than disabled (grok 09-16). */
+  color: var(--archive);
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
@@ -2895,7 +2916,7 @@ body:has(.selection-tray.is-collapsed) {
   gap: 3rem;
   margin-top: 5rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .about-page__columns h2 {
@@ -2909,6 +2930,15 @@ body:has(.selection-tray.is-collapsed) {
 .about-page__columns p {
   color: var(--archive);
   font-size: 13px;
+}
+
+.about-page__cta {
+  /* Adjacent bare link-actions collapsed into one run-on line — the pair
+     needs a real gap container (grok 10-02). */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin-top: 1.5rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2930,13 +2960,6 @@ body:has(.selection-tray.is-collapsed) {
 
   .artwork-image img {
     opacity: 1;
-    transform: none;
-  }
-
-  .artwork-card:hover .artwork-image img,
-  .home-gallery__item:hover .artwork-image img,
-  .path-card:hover .artwork-image img,
-  .collection-index__item:hover .artwork-image img {
     transform: none;
   }
 

@@ -768,7 +768,11 @@ function ExploreActiveFilters({
             <CloseIcon />
           </Link>
         ) : null}
-        {activeDepartment !== "all" ? (
+        {/* When the URL carries both a name and an id, the id owns the
+            query — rendering the name pill too claimed two departments
+            and its remove-link killed the live id filter (needs-work
+            10-01). */}
+        {activeDepartment !== "all" && departmentId === undefined ? (
           <Link
             to="/explore"
             search={{
