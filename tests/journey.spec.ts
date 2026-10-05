@@ -240,6 +240,55 @@ test("Home department index opens a bounded department view", async ({
   await expect(page.locator(".explore-count")).toHaveText("6 / 6 review works");
 });
 
+test("Collection index intro keeps its sticky header offset", async ({
+  page,
+}) => {
+  // The intro is a sibling of .site-header — its sticky top only
+  // resolves while --header-h lives on :root (review 10-05 11:17 #4).
+  await page.goto("/");
+  const intro = page.locator(".collection-index__intro");
+  await expect(intro).toBeVisible();
+
+  const geometry = await intro.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    const root = getComputedStyle(document.documentElement);
+    return {
+      position: computed.position,
+      top: computed.top,
+      headerH: root.getPropertyValue("--header-h").trim(),
+      rem: parseFloat(root.fontSize),
+    };
+  });
+  const expectedTop = parseFloat(geometry.headerH) + geometry.rem;
+
+  if ((page.viewportSize()?.width ?? 0) <= 760) {
+    // The 760px media block deliberately unpins the intro; the token
+    // still narrows the header it would clear.
+    expect(geometry.position).toBe("static");
+    expect(geometry.headerH).toBe("68px");
+    return;
+  }
+
+  expect(geometry.position).toBe("sticky");
+  expect(geometry.headerH).toBe("76px");
+  expect(geometry.top).toBe(`${expectedTop}px`);
+
+  // Scroll the index section's midpoint to the viewport center — safely
+  // inside the sticky range at both ends (scrolling to the page bottom
+  // would clamp the intro against the section's bottom edge instead).
+  const pinned = await intro.evaluate((el) => {
+    const section = el.closest(".collection-index");
+    if (!section) {
+      return null;
+    }
+    const rect = section.getBoundingClientRect();
+    const delta = rect.top + rect.height / 2 - window.innerHeight / 2;
+    window.scrollTo({ top: window.scrollY + delta, behavior: "instant" });
+    return el.getBoundingClientRect().top;
+  });
+  expect(pinned).toBeCloseTo(expectedTop, 0);
+});
+
 test("About keeps the source and working rules in view", async ({ page }) => {
   await page.goto("/about");
 
