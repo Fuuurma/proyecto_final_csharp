@@ -111,10 +111,13 @@ export function dedupeMetFetch<T>(
 
 // --- Edge tier (Cloudflare Cache API) ------------------------------------
 //
-// The Map above is isolate-local. `caches.default` is shared across
-// isolates and colos for the deployment lifetime, which is what makes the
-// upstream cache effective under real traffic. Met records are effectively
-// immutable, so edge TTLs run days while search stays in minutes.
+// The Map above is isolate-local. `caches.default` is part of Cloudflare's
+// global network cache, but Cache API contents do not replicate outside the
+// data center that handled the request. A request handled elsewhere needs its
+// own entry; do not assume cross-data-center hits or invalidation. See
+// https://developers.cloudflare.com/workers/runtime-apis/cache/.
+// Met records are effectively immutable, so edge TTLs run days while search
+// stays in minutes.
 //
 // Where `caches` is absent (vitest, plain node) the tier silently no-ops
 // and the adapter falls back to the in-process map.
