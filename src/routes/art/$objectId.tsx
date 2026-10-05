@@ -314,7 +314,7 @@ function ArtworkDetail() {
         <div className="detail-copy">
           <div className="detail-heading">
             <span className="eyebrow">
-              {artwork.classification ?? "Collection object"}
+              {artwork.classification ?? "Unclassified"}
             </span>
             <h1 id="artwork-title">{artwork.displayTitle}</h1>
             {artwork.displayTitle !== artwork.title ? (
