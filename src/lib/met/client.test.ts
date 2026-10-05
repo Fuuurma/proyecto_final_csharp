@@ -574,8 +574,10 @@ describe("fetchMetSearchIds cache value bound", () => {
 
   // needs-work 09-26 P2: over-bound listings skipped the cache entirely,
   // so whole-department browses took the hard error during upstream
-  // timeouts while small searches degraded to stale. One oversized
-  // stale slot (most recent wins) now serves them on timeout/5xx.
+  // timeouts while small searches degraded to stale. A small keyed
+  // oversized-stale map (bounded at 3 keys) now serves them on
+  // timeout/5xx — a single global slot let concurrent over-bound keys
+  // evict each other (needs-work 10-02).
   it("serves the oversized stale tier on timeout after one success", async () => {
     const ids = Array.from(
       { length: MAX_CACHED_SEARCH_IDS + 1 },
@@ -599,6 +601,46 @@ describe("fetchMetSearchIds cache value bound", () => {
     // detail; what matters is it stopped hitting upstream and degraded
     expect(calls).toBeGreaterThanOrEqual(2);
     expect(second.objectIds).toEqual(first.objectIds);
+  });
+
+  // needs-work 10-02: the single-slot tier kept only the most recent
+  // over-bound listing, so a second concurrent over-bound browse evicted
+  // the first key's only stale copy — its next failure got a hard error
+  // while any other key degraded. The tier is now keyed (bounded).
+  it("keeps each over-bound key's stale entry across concurrent keys", async () => {
+    const idsA = Array.from(
+      { length: MAX_CACHED_SEARCH_IDS + 1 },
+      (_, i) => i + 1,
+    );
+    const idsB = Array.from(
+      { length: MAX_CACHED_SEARCH_IDS + 1 },
+      (_, i) => i + 500_000,
+    );
+    let calls = 0;
+    const fetcher: typeof fetch = async (input) => {
+      calls += 1;
+      const url = String(input instanceof Request ? input.url : input);
+      if (calls <= 2) {
+        return url.includes("q=stale-a")
+          ? response({ total: idsA.length, objectIDs: idsA })
+          : response({ total: idsB.length, objectIDs: idsB });
+      }
+      throw new DOMException("aborted", "AbortError");
+    };
+    vi.stubGlobal("fetch", fetcher);
+    const retry = { sleep: async () => {} };
+
+    // Populate both keys while upstream is healthy; under the single
+    // slot B's write evicted A's only stale copy.
+    await fetchMetSearchIds("stale-a", { retry });
+    await fetchMetSearchIds("stale-b", { retry });
+
+    // Upstream is now down: BOTH keys must degrade to their own stale
+    // listing — A must not fail nor be served B's ids.
+    const againA = await fetchMetSearchIds("stale-a", { retry });
+    const againB = await fetchMetSearchIds("stale-b", { retry });
+    expect(againA.objectIds).toEqual(idsA);
+    expect(againB.objectIds).toEqual(idsB);
   });
 
   it("serving uncached oversize listings still returns them whole", async () => {
@@ -704,15 +746,77 @@ describe("upstream edge cache", () => {
 // wrapped call's finally, not only the probe's — a non-probe call
 // finishing inside a probe's load window would let a second probe
 // through. The finally must be gated on the call actually probing.
+// needs-work 09-27 P2 claimed a rejected caller could still reach the
+// finally via a pre-computed isProbe — refuted: the fail-fast throw
+// precedes the try block, so rejected calls never enter the finally at
+// all. The token is now assigned inside the admission branch so
+// ownership is structural, and a behavior test pins the concurrency
+// contract instead of the mechanism.
 describe("circuit probe flag ownership", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    clearMetCache();
+    resetMetCircuitBreaker();
+  });
+
   it("gates the probeInFlight clear on the probing call", () => {
     const src = readFileSync(join(__dirname, "client.server.ts"), "utf8");
     const fn = src.slice(
       src.indexOf("async function withMetCircuit"),
       src.indexOf("// Upstream failure taxonomy"),
     );
-    expect(fn).toContain("const isProbe = circuitOpenedAt !== undefined;");
+    // isProbe is set only after admission — the throw precedes it.
+    expect(fn).not.toContain("const isProbe = circuitOpenedAt !== undefined");
+    const flagSet = fn.indexOf("probeInFlight = true;");
+    const probeMarked = fn.indexOf("isProbe = true;");
+    expect(flagSet).toBeGreaterThan(-1);
+    expect(probeMarked).toBeGreaterThan(flagSet);
     expect(fn).toContain("if (isProbe) probeInFlight = false;");
     expect(fn).not.toContain("    probeInFlight = false;");
+  });
+
+  it("a fail-fast rejected caller cannot clear a live probe's flag", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    let resolveProbe: ((res: Response) => void) | undefined;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      if (calls <= 3) throw new Error("upstream down");
+      // The probe parks until the test releases it.
+      return new Promise<Response>((resolve) => {
+        resolveProbe = resolve;
+      });
+    };
+    const retry = { sleep: async () => {} };
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        fetchMetDepartments({ fetcher, retry }),
+      ).rejects.toMatchObject({ kind: "5xx" });
+    }
+    vi.advanceTimersByTime(30_000);
+
+    // Probe A is admitted and parks upstream.
+    const probeA = fetchMetDepartments({ fetcher, retry });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toBe(4);
+
+    // Call B fails fast during the probe — its finally must not touch
+    // the flag. Under the pre-admission isProbe it did, so call C would
+    // be admitted as a second probe and reach the fetcher.
+    await expect(fetchMetDepartments({ fetcher, retry })).rejects.toMatchObject(
+      { kind: "5xx" },
+    );
+    const probeC = fetchMetDepartments({ fetcher, retry });
+    const probeCRejected = expect(probeC).rejects.toMatchObject({
+      kind: "5xx",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toBe(4);
+    await probeCRejected;
+
+    resolveProbe?.(response({ departments: [] }));
+    await probeA;
   });
 });

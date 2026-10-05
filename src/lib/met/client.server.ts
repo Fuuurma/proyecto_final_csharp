@@ -58,8 +58,12 @@ async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
   // probe may clear the flag — a non-probe call finishing inside the
   // probe's load window used to clear it early and admit a second
   // probe. Latent today (timeoutMs 3s << CIRCUIT_OPEN_MS 30s); the
-  // local token makes it impossible.
-  const isProbe = circuitOpenedAt !== undefined;
+  // local token makes it impossible. The token is set only after
+  // admission so ownership is structural: even if a future refactor
+  // moves the fail-fast throw inside the try, no rejected call can
+  // clear a flag it never set (refutes needs-work 09-27 — the throw
+  // precedes try, so rejected calls never reached the finally at all).
+  let isProbe = false;
   if (circuitOpenedAt !== undefined) {
     if (now - circuitOpenedAt < CIRCUIT_OPEN_MS || probeInFlight) {
       // An open circuit must fail fast — never queued for a retry.
@@ -71,6 +75,7 @@ async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
       );
     }
     probeInFlight = true;
+    isProbe = true;
   }
 
   try {
@@ -428,21 +433,23 @@ export const MAX_CACHED_SEARCH_IDS = 20_000;
 // needs-work 09-26 P2: over-bound listings skip the value cache (isolate
 // memory), but that left whole-department browses and bare q=* searches
 // with no stale tier during upstream outages — they took the hard error
-// while small searches degraded. One oversized slot (most recent wins,
-// bounded: a single entry cannot burst the isolate) retains the latest
-// over-bound listing purely for stale-on-error service.
-let oversizedStale: {
-  key: string;
-  value: MetSearchIds;
-  expiresAt: number;
-} | null = null;
+// while small searches degraded. A small keyed map (not one global slot:
+// two concurrent over-bound browses used to evict each other's only
+// stale entry — needs-work 10-02) retains the latest over-bound listings
+// purely for stale-on-error service, capped so a burst of giant listings
+// stays bounded in the isolate.
+const OVERSIZED_STALE_MAX = 3;
+const oversizedStale = new Map<
+  string,
+  { value: MetSearchIds; expiresAt: number }
+>();
 
 // The slot is deliberately not in the shared `store` — an over-bound listing
 // is too large to hold there — so it has to announce itself to be clearable.
 // Without this, clearMetCache() empties the cache and leaves this one holding
 // a pre-reset listing, which is exactly the state a reset exists to remove.
 registerCacheInvalidator(() => {
-  oversizedStale = null;
+  oversizedStale.clear();
 });
 
 export type MetSearchIds = {
@@ -573,12 +580,13 @@ export async function fetchMetSearchIds(
         STALE_IF_ERROR_GRACE_MS,
       );
       if (stale && canServeStale(error)) return stale;
+      const overStale = oversizedStale.get(cacheKey);
       if (
-        oversizedStale?.key === cacheKey &&
-        Date.now() <= oversizedStale.expiresAt + STALE_IF_ERROR_GRACE_MS &&
+        overStale &&
+        Date.now() <= overStale.expiresAt + STALE_IF_ERROR_GRACE_MS &&
         canServeStale(error)
       )
-        return oversizedStale.value;
+        return overStale.value;
       throw error;
     }
 
@@ -593,11 +601,17 @@ export async function fetchMetSearchIds(
       setCached(cacheKey, loaded, CACHE_TTL_MS.search);
       await setEdgeCached(cacheKey, loaded, EDGE_TTL_S.search);
     } else {
-      oversizedStale = {
-        key: cacheKey,
+      // Refresh-on-write like setCached: delete first so the eviction
+      // check sees the true budget and the key keeps recency order.
+      oversizedStale.delete(cacheKey);
+      oversizedStale.set(cacheKey, {
         value: loaded,
         expiresAt: Date.now() + CACHE_TTL_MS.search,
-      };
+      });
+      if (oversizedStale.size > OVERSIZED_STALE_MAX) {
+        const oldest = oversizedStale.keys().next().value;
+        if (oldest !== undefined) oversizedStale.delete(oldest);
+      }
     }
     return loaded;
   });
