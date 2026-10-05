@@ -141,7 +141,7 @@ function Home() {
               </Link>
               <div className="home-gallery__caption">
                 <span className="home-gallery__classification">
-                  {artwork.classification ?? "Collection object"}
+                  {artwork.classification ?? "Unclassified"}
                 </span>
                 <h3>
                   <Link
