@@ -479,8 +479,15 @@ function Explore() {
         <section aria-live="polite">
           <Empty>
             <EmptyHeader>
+              {/* "needs a moment" is honest only for transient kinds —
+                  a 4xx/parse failure is deterministic and no wait fixes
+                  it (the typed field existed unwired since 09-25). */}
               <span className="eyebrow">Collection unavailable</span>
-              <EmptyTitle>The index needs a moment.</EmptyTitle>
+              <EmptyTitle>
+                {result.failure === "4xx" || result.failure === "parse"
+                  ? "This view can't be loaded."
+                  : "The index needs a moment."}
+              </EmptyTitle>
               <EmptyDescription>{result.message}</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>

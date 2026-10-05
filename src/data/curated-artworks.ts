@@ -970,8 +970,6 @@ export const curatedArtworks = [
   }),
 ] satisfies Artwork[];
 
-export const curatedObjectIds = curatedArtworks.map((artwork) => artwork.id);
-
 export const featuredArtwork = curatedArtworks[0];
 
 export const aboutSourceArtwork: Artwork | undefined = curatedArtworks.find(

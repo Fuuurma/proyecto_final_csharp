@@ -255,6 +255,28 @@ describe("searchCollection", () => {
     expect(result.message).toMatch(/answering slowly/);
   });
 
+  it("an index that reports matches but returns no ids is partial, not empty", async () => {
+    // needs-work 10-02 P1: total>0 collapsed to status "empty" printed
+    // "No open-access works matched" beside "0 loaded · N in the index".
+    setFixtureMode(false);
+    fetchMetSearchIds.mockResolvedValueOnce({
+      total: 47000,
+      objectIds: [],
+      preFiltered: true,
+    });
+
+    const result = await searchCollection({
+      data: { q: "waves", department: "all", page: 1 },
+    });
+    expect(result.status).toBe("partial");
+    expect(result.source).toBe("met");
+    expect(result.total).toBe(47000);
+    expect(result.artworks).toHaveLength(0);
+    expect(result.message).toMatch(/delivered none/);
+    // No hydration fetch is worth running on an empty id window.
+    expect(fetchMetObjects).not.toHaveBeenCalled();
+  });
+
   it("a fully hydrated window that sieves to zero is an honest empty", async () => {
     setFixtureMode(false);
     fetchMetSearchIds.mockResolvedValueOnce({
