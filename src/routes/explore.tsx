@@ -325,13 +325,23 @@ function Explore() {
           {
             onChunk: (all) => {
               if (cancelled) return;
-              if (all.length === lastChunkLength) {
+              // Count NEW works after the grid's dedupe, not raw yield —
+              // adjacent hydrate windows overlap by 12 ids, so a window
+              // re-serving only ids the grid already shows grew `all`
+              // while the user saw nothing new, resetting the counter
+              // and re-arming "Load more" on a dead stream (needs-work
+              // 10-04).
+              const newCount = dedupeById([
+                ...result.artworks,
+                ...all,
+              ]).length;
+              if (newCount === lastChunkLength) {
                 zeroYieldWindows += 1;
                 if (zeroYieldWindows >= 2) setFillExhausted(true);
               } else {
                 zeroYieldWindows = 0;
               }
-              lastChunkLength = all.length;
+              lastChunkLength = newCount;
               setExtra([...all]);
             },
             shouldContinue: () => !cancelled,

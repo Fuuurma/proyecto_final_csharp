@@ -86,3 +86,22 @@ describe("explore department filter visibility (grok 01:45 P2)", () => {
     expect(src).toContain("departmentNameById(departmentId)");
   });
 });
+
+// needs-work 10-04: the tail-fill exhaustion heuristic counted RAW chunk
+// length, but adjacent hydrate windows overlap by 12 ids — a window that
+// re-served only ids the grid already deduped grew `all` while showing
+// nothing new, resetting zeroYieldWindows and re-arming "Load more" on a
+// dead stream. The yield measure must run through the same dedupeById the
+// grid applies.
+describe("explore tail-fill exhaustion heuristic", () => {
+  it("measures window yield after the grid's dedupe", () => {
+    const start = exploreSource.indexOf("onChunk:");
+    expect(start).toBeGreaterThan(-1);
+    const block = exploreSource.slice(start, start + 1200);
+    expect(block).toContain("dedupeById([");
+    // The deduped count — including the page-1 result — is what the
+    // zero-yield comparison must run against.
+    expect(block).toContain("...result.artworks");
+    expect(block).not.toContain("all.length === lastChunkLength");
+  });
+});
