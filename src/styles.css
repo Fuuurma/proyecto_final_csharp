@@ -2019,7 +2019,14 @@ img {
   color: var(--white);
   font-size: 12px;
   letter-spacing: 0.04em;
-  opacity: 1;
+  /* Hidden at rest on a fine pointer — the hover/focus rule below
+     reveals it; the (pointer: coarse) block keeps it persistent on
+     touch where no hover exists. */
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
   pointer-events: none;
 }
 
