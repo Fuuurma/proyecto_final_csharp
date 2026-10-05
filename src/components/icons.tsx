@@ -168,6 +168,26 @@ export function ExpandIcon({ size = 16 }: IconProps) {
   );
 }
 
+export function CopyIcon({ size = 16 }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="icon"
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+    >
+      <path
+        d="M5.5 5.5h8v8h-8v-8ZM10.5 5.5v-3h-8v8h3"
+        stroke="currentColor"
+        strokeWidth="1.15"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function ShareIcon({ size = 16 }: IconProps) {
   return (
     <svg

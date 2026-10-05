@@ -54,7 +54,9 @@ export function ExploreGridFooter({
         <p className="explore-fill-failed" role="status">
           {atCap
             ? "Some pages failed to load within the record cap — the grid shows what arrived."
-            : "Some pages failed to load — the grid shows what arrived. Load more to try again."}
+            : canLoadMore
+              ? "Some pages failed to load — the grid shows what arrived. Load more to try again."
+              : "Some pages failed to load — the grid shows what arrived."}
         </p>
       ) : null}
       {fillExhausted ? (

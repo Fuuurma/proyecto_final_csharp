@@ -90,12 +90,15 @@ describe("ArtworkImage", () => {
     );
   });
 
-  it("renders the missing panel once every source has failed", () => {
+  it("renders a load-failure note once every source has failed", () => {
+    // A record WITH images that all failed is a fetch problem, not a
+    // rights fact — the copy must not claim "no image in the record"
+    // (grok 09-14).
     render(<ArtworkImage artwork={makeArtwork()} />);
     fireEvent.error(screen.getByRole("img"));
     fireEvent.error(screen.getByRole("img"));
 
-    expect(screen.getByText("No image in the public record")).toBeVisible();
+    expect(screen.getByText("The image did not load")).toBeVisible();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 

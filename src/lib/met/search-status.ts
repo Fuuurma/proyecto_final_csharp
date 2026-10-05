@@ -54,6 +54,5 @@ export function computeSearchStatus(input: {
   ) {
     return "partial";
   }
-  if (input.usableCount === 0) return "empty";
   return "success";
 }

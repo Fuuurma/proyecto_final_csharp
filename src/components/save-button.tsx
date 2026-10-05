@@ -17,6 +17,13 @@ export function SaveButton({ artwork, compact = false }: SaveButtonProps) {
   function onClick(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     event.stopPropagation();
+    // The gate is load-bearing but lives in the handler, not `disabled`:
+    // pre-hydration `saved` is always false, so an unguarded toggle would
+    // invert a stored artwork's remove-click into an add. The button stays
+    // enabled (a greyed-out primary CTA that swallows clicks has no
+    // feedback) and aria-busy announces the not-yet-real state
+    // (grok 23:45 #2 audited 00:3x; grok 10-05 #10).
+    if (!isHydrated) return;
     toggle(artwork);
   }
 
@@ -27,12 +34,7 @@ export function SaveButton({ artwork, compact = false }: SaveButtonProps) {
       size={compact ? "sm" : "lg"}
       className={cn("save-button", compact && "save-button--compact")}
       aria-pressed={saved}
-      // The gate is load-bearing: pre-hydration `saved` is always
-      // false, so dropping it would invert a stored artwork's
-      // remove-click into an add. aria-busy makes the non-interactive
-      // state legible instead (grok 23:45 #2, audited 00:3x).
       aria-busy={!isHydrated}
-      disabled={!isHydrated}
       aria-label={
         saved
           ? `Saved — Remove ${artwork.displayTitle} from your selection`

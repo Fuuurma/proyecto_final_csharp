@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { rememberArtworkRatio } from "@/lib/artwork-ratio-cache";
 import type { Artwork } from "@/lib/met/normalize";
 
 type ArtworkImageProps = {
@@ -16,7 +17,6 @@ type ArtworkImageProps = {
     | "imageAspectRatio"
   >;
   size?: "small" | "large";
-  layout?: "ratio" | "fill";
   eager?: boolean;
   src?: string | null;
   className?: string;
@@ -25,7 +25,6 @@ type ArtworkImageProps = {
 export function ArtworkImage({
   artwork,
   size = "small",
-  layout = "ratio",
   eager = false,
   src,
   className = "",
@@ -54,6 +53,12 @@ export function ArtworkImage({
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
+  // Any rendered surface knows the true ratio — record it so the detail
+  // pending skeleton can adopt it on client-side arrivals (grok 10-01).
+  useLayoutEffect(() => {
+    rememberArtworkRatio(artwork.id, artwork.imageAspectRatio);
+  }, [artwork.id, artwork.imageAspectRatio]);
+
   // A cached image can finish before React attaches onLoad (SSR
   // hydration race) — then it would sit hidden behind is-loading
   // forever (quick-critic 09-10 17:4x, hardening grok 18:45 #5).
@@ -71,7 +76,7 @@ export function ArtworkImage({
 
   return (
     <div
-      className={`artwork-image ${layout === "ratio" ? "aspect-(--artwork-ratio)" : ""} ${layout === "fill" ? "artwork-image--fill" : ""} ${loadedSrc === source ? "" : "is-loading"} ${className}`.trim()}
+      className={`artwork-image aspect-(--artwork-ratio) ${loadedSrc === source ? "" : "is-loading"} ${className}`.trim()}
       style={imageStyle}
     >
       {source ? (
@@ -100,7 +105,14 @@ export function ArtworkImage({
         />
       ) : (
         <div className="artwork-image__missing">
-          <span>No image in the public record</span>
+          {/* Two honest states: a record with no image vs a record whose
+              image failed to arrive — a network failure is not a rights
+              fact (grok 09-14). */}
+          <span>
+            {sources.length === 0
+              ? "No image in the public record"
+              : "The image did not load"}
+          </span>
           <small>Object {artwork.id}</small>
         </div>
       )}

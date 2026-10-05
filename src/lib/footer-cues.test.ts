@@ -8,10 +8,11 @@ describe("footerCues", () => {
     ]);
   });
 
-  it("object records advertise flip and inspect-close cues", () => {
+  it("object records advertise only the flip cue", () => {
+    // Esc closes the inspect dialog only while it is open; the cue was
+    // dead chrome in the default closed state (needs-work 09-27).
     expect(footerCues("/art/436535")).toEqual([
       { keys: ["←", "→"], label: "Flip object records" },
-      { keys: ["Esc"], label: "Close inspection" },
     ]);
   });
 

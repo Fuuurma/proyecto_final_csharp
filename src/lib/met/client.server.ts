@@ -11,7 +11,7 @@ import {
   setCached,
   setEdgeCached,
 } from "./cache";
-import { type Artwork, normalizeMetObject } from "./normalize";
+import { type Artwork, normalizeMetPayload } from "./normalize";
 import {
   metDepartmentsSchema,
   metObjectSchema,
@@ -79,13 +79,23 @@ async function withMetCircuit<T>(load: () => Promise<T>): Promise<T> {
     circuitOpenedAt = undefined;
     return result;
   } catch (error) {
-    if (
-      error instanceof MetApiError &&
-      (error.kind === "timeout" || error.kind === "5xx")
-    ) {
-      consecutiveFailures += 1;
-      if (consecutiveFailures >= CIRCUIT_FAILURE_LIMIT) {
-        circuitOpenedAt = Date.now();
+    if (error instanceof MetApiError) {
+      if (error.kind === "timeout" || error.kind === "5xx") {
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= CIRCUIT_FAILURE_LIMIT) {
+          circuitOpenedAt = Date.now();
+        }
+      } else {
+        // A typed 4xx/429/parse means the Met answered — proof of life.
+        // Only unanswered or broken responses count toward opening the
+        // circuit, so an interleaved 404 can't let three non-consecutive
+        // timeouts trip it (needs-work 09-25 P3). And a probe that gets
+        // an answer has proven the upstream reachable: leaving
+        // circuitOpenedAt set kept every concurrent caller failing fast
+        // on a synthetic 5xx while the real 4xx went unreported
+        // (needs-work 09-25 P2 probe facet).
+        consecutiveFailures = 0;
+        circuitOpenedAt = undefined;
       }
     }
     throw error;
@@ -308,7 +318,10 @@ async function loadMetObject(
     );
   }
 
-  const artwork = normalizeMetObject(parsed.data);
+  // parsed.data is already schema-typed — normalizeMetPayload skips the
+  // second metObjectSchema.parse normalizeMetObject would re-run
+  // (needs-work 09-26 P3: ~72 parses per 36-object window).
+  const artwork = normalizeMetPayload(parsed.data);
   // Curated titles win over the Met's raw titles for live-fetched objects
   // too (c53e8ba removed the normalizer's magic-ID special case; without
   // this overlay, live searches showing 56353 lost "The Great Wave").
@@ -607,6 +620,7 @@ export async function fetchMetObjects(
     Math.min(options.concurrency ?? 4, objectIds.length || 1),
   );
   let firstError: unknown;
+  const failedIds: number[] = [];
 
   async function worker(): Promise<void> {
     while (queue.length > 0) {
@@ -618,10 +632,10 @@ export async function fetchMetObjects(
       } catch (error) {
         // A failed object degrades to null in the batch — but the failure
         // must be visible, not silently absorbed (devin 09-09 13:37).
-        console.warn(
-          `[met] object ${next.objectId} fetch failed; returning null for this slot`,
-          error,
-        );
+        // One line per batch, not per object: a degraded upstream
+        // otherwise floods the log with ~36 warns per window
+        // (needs-work 09-23 P3).
+        failedIds.push(next.objectId);
         results[next.index] = null;
         firstError ??= error;
       }
@@ -629,6 +643,13 @@ export async function fetchMetObjects(
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  if (failedIds.length > 0) {
+    console.warn(
+      `[met] ${failedIds.length} object fetch(es) failed; returning null for those slots`,
+      { ids: failedIds, firstError },
+    );
+  }
   const artworks = results.filter(
     (artwork): artwork is Artwork => artwork !== null,
   );

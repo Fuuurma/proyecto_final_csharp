@@ -140,7 +140,7 @@ function Home() {
                 <ArtworkImage artwork={artwork} />
               </Link>
               <div className="home-gallery__caption">
-                <span className="home-gallery__classification mono">
+                <span className="home-gallery__classification">
                   {artwork.classification ?? "Collection object"}
                 </span>
                 <h3>
@@ -160,9 +160,12 @@ function Home() {
         </div>
 
         <div className="home-gallery__footer">
-          <span className="mono">A larger room, still bounded</span>
+          <span className="mono">
+            {homeGalleryArtworks.length} of the {curatedArtworks.length} review
+            works hang here
+          </span>
           <Link to="/explore" className="link-action">
-            Open all {curatedArtworks.length} objects{" "}
+            Open the {curatedArtworks.length}-work review set{" "}
             <span aria-hidden="true">→</span>
           </Link>
         </div>
@@ -203,7 +206,17 @@ function Home() {
                 </Link>
                 <div className="path-card__meta">
                   <span className="eyebrow">{path.label}</span>
-                  <h3>{path.title}</h3>
+                  <h3>
+                    <Link
+                      to="/explore"
+                      search={{
+                        path: path.slug,
+                        department: undefined,
+                      }}
+                    >
+                      {path.title}
+                    </Link>
+                  </h3>
                   <p>{path.description}</p>
                   <Link
                     to="/explore"
@@ -239,7 +252,7 @@ function Home() {
             <ReviewDepartmentCard department={department} key={department.id} />
           ))}
         </div>
-        <div className="home-gallery__footer">
+        <div className="collection-index__footer">
           <span className="mono">The rest of the museum rooms</span>
           <Link to="/departments" className="link-action">
             Open the department index <span aria-hidden="true">→</span>
@@ -251,7 +264,7 @@ function Home() {
         className="collection-note page-frame"
         aria-labelledby="collection-note-heading"
       >
-        <div className="collection-note__mark mono">OA</div>
+        <div className="collection-note__mark">Open Access</div>
         <div className="collection-note__copy">
           <span className="eyebrow">Open by design</span>
           <h2 id="collection-note-heading">The source stays in view.</h2>

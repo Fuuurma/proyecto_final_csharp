@@ -30,6 +30,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { curatedArtworks } from "@/data/curated-artworks";
 import { isReviewDepartmentName } from "@/data/departments";
+import { recallArtworkRatio } from "@/lib/artwork-ratio-cache";
 import {
   adjacentInSequence,
   type SequenceNeighbors,
@@ -496,7 +497,11 @@ function ArtworkDetailPending() {
       <div className="page-frame detail-page__topline">
         <span className="link-action">Reading object record…</span>
       </div>
-      <DetailSkeleton imageAspectRatio={curated?.imageAspectRatio} />
+      <DetailSkeleton
+        imageAspectRatio={
+          curated?.imageAspectRatio ?? recallArtworkRatio(Number(objectId))
+        }
+      />
     </main>
   );
 }
@@ -585,7 +590,7 @@ function ArtworkStage({
               alt={`${artwork.displayTitle}${artwork.artist ? `, ${artwork.artist}` : ""}`}
             />
             {artwork.creditLine ? (
-              <p className="image-dialog-credit mono">{artwork.creditLine}</p>
+              <p className="image-dialog-credit">{artwork.creditLine}</p>
             ) : null}
           </div>
         </DialogContent>

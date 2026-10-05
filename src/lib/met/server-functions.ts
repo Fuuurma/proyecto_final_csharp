@@ -229,6 +229,33 @@ export const searchCollection = createServerFn({ method: "GET" })
         departmentId: mappedDepartmentId,
       });
       const pageIds = hydrateWindow(search.objectIds, page);
+
+      // The index claims matches but this window returned zero ids —
+      // an inconsistent upstream response, not a genuine empty. The old
+      // path fell through to "empty" while preserving a non-zero total,
+      // which the UI printed beside "No matching works"
+      // (needs-work 10-02 P1).
+      if (pageIds.length === 0 && search.total > 0) {
+        return {
+          status: "partial",
+          source: "met",
+          query: q,
+          department:
+            (mappedDepartmentId !== undefined
+              ? departmentNameById(mappedDepartmentId)
+              : undefined) ??
+            (mappedDepartment === missingDepartmentFilter
+              ? department
+              : mappedDepartment),
+          departmentId: mappedDepartmentId,
+          total: search.total,
+          preFiltered: search.preFiltered,
+          artworks: [],
+          message:
+            "The index reports matching records but delivered none for this page.",
+        };
+      }
+
       const hydrated = await fetchMetObjects(pageIds, {
         concurrency: 4,
       });
@@ -284,7 +311,10 @@ export const searchCollection = createServerFn({ method: "GET" })
             department:
               (mappedDepartmentId !== undefined
                 ? departmentNameById(mappedDepartmentId)
-                : undefined) ?? mappedDepartment,
+                : undefined) ??
+              (mappedDepartment === missingDepartmentFilter
+                ? department
+                : mappedDepartment),
             departmentId: mappedDepartmentId,
             total: search.total,
             preFiltered: search.preFiltered,
@@ -339,7 +369,13 @@ export const searchCollection = createServerFn({ method: "GET" })
         artworks,
         message:
           status === "partial"
-            ? "Some records could not be loaded; showing the ones available."
+            ? // Two causes, one status: a hydration shortfall means records
+              // failed to load; a preFiltered sieve drop means records
+              // arrived but are not open access. The copy must not claim
+              // a load failure when every record loaded (needs-work 10-01).
+              hydrated.length < pageIds.length
+              ? "Some records could not be loaded; showing the ones available."
+              : "Some listed records are not open access; showing the ones available."
             : undefined,
       };
     } catch (error) {

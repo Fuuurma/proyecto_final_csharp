@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import type { Artwork } from "@/lib/met/normalize";
 import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
-import { CheckIcon, ShareIcon } from "./icons";
+import { CheckIcon, CopyIcon } from "./icons";
 
 export function ShareButton({ artwork }: { artwork: Artwork }) {
   const { copied, copyFailed, copy } = useCopyToClipboard(2200);
@@ -26,14 +26,14 @@ export function ShareButton({ artwork }: { artwork: Artwork }) {
           ? "Copy failed — retry copying this object page link"
           : copied
             ? "Copied link — copy this object page link again"
-            : "Share — copy this object page link"
+            : "Copy link to this object page"
       }
     >
       <span data-icon="inline-start">
-        {copied ? <CheckIcon /> : <ShareIcon />}
+        {copied ? <CheckIcon /> : <CopyIcon />}
       </span>
       <span>
-        {copyFailed ? "Copy failed" : copied ? "Copied link" : "Share"}
+        {copyFailed ? "Copy failed" : copied ? "Copied link" : "Copy link"}
       </span>
     </Button>
   );

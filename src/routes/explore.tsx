@@ -358,21 +358,6 @@ function Explore() {
     result.status,
   ]);
 
-  function changeDepartment(nextValues: string[]) {
-    const nextDepartment = nextValues[0];
-    if (!isExploreDepartmentFilter(nextDepartment)) return;
-
-    void navigate({
-      search: {
-        q: query || undefined,
-        department: nextDepartment === "all" ? undefined : nextDepartment,
-        path: undefined,
-        departmentId: undefined,
-        page: undefined,
-      },
-    });
-  }
-
   function loadMore() {
     void navigate({
       search: {
@@ -432,40 +417,19 @@ function Explore() {
         />
       </search>
 
-      <div className="explore-tools">
-        <fieldset className="filter-group">
-          <legend className="eyebrow">Department</legend>
-          <ToggleGroup
-            aria-label="Department"
-            onValueChange={changeDepartment}
-            value={pressedDepartment === undefined ? [] : [pressedDepartment]}
-            variant="outline"
-            spacing={0}
-          >
-            {exploreDepartmentFilters.map((option) => (
-              <ToggleGroupItem key={option} value={option}>
-                {option === "all" ? "All departments" : option}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </fieldset>
-        <span className="explore-count mono">
-          {exploreCountText({
-            source: result.source,
-            preFiltered: result.preFiltered,
-            total,
-            loaded: works.length,
-          })}
-        </span>
-        {query ||
-        activePath ||
-        departmentId !== undefined ||
-        activeDepartment !== "all" ? (
-          <Link to="/explore" search={{}} className="link-action explore-clear">
-            Return to review set <span aria-hidden="true">↗</span>
-          </Link>
-        ) : null}
-      </div>
+      <ExploreTools
+        query={query}
+        activeDepartment={activeDepartment}
+        departmentId={departmentId}
+        pressedDepartment={pressedDepartment}
+        hasActivePath={activePath !== undefined}
+        count={exploreCountText({
+          source: result.source,
+          preFiltered: result.preFiltered,
+          total,
+          loaded: works.length,
+        })}
+      />
 
       <div className="explore-paths">
         <span className="eyebrow">Curated paths</span>
@@ -495,89 +459,14 @@ function Explore() {
         </Link>
       </div>
 
-      {query ||
-      activePath ||
-      departmentId !== undefined ||
-      activeDepartment !== "all" ? (
-        <section className="active-filters" aria-label="Active filters">
-          <span className="eyebrow">Filtered by:</span>
-          <div className="active-filters__row">
-            {query ? (
-              <Link
-                to="/explore"
-                search={{
-                  q: undefined,
-                  department:
-                    activeDepartment === "all" ? undefined : activeDepartment,
-                  path: pathSlug,
-                  departmentId,
-                }}
-                className="filter-pill"
-                aria-label={`Remove search filter "${query}"`}
-              >
-                <span>Query: “{query}”</span>
-                <CloseIcon />
-              </Link>
-            ) : null}
-            {activeDepartment !== "all" ? (
-              <Link
-                to="/explore"
-                search={{
-                  q: query || undefined,
-                  department: undefined,
-                  path: pathSlug,
-                  departmentId: undefined,
-                }}
-                className="filter-pill"
-                aria-label={`Remove department filter "${activeDepartment}"`}
-              >
-                <span>Dept: {activeDepartment}</span>
-                <CloseIcon />
-              </Link>
-            ) : null}
-            {departmentId !== undefined && liveDepartmentName ? (
-              <Link
-                to="/explore"
-                search={{
-                  q: query || undefined,
-                  department: undefined,
-                  path: undefined,
-                  departmentId: undefined,
-                }}
-                className="filter-pill"
-                aria-label={`Remove department filter "${liveDepartmentName}"`}
-              >
-                <span>Dept: {liveDepartmentName}</span>
-                <CloseIcon />
-              </Link>
-            ) : null}
-            {activePath ? (
-              <Link
-                to="/explore"
-                search={{
-                  q: query || undefined,
-                  department:
-                    activeDepartment === "all" ? undefined : activeDepartment,
-                  path: undefined,
-                  departmentId,
-                }}
-                className="filter-pill"
-                aria-label={`Remove path filter "${activePath.title}"`}
-              >
-                <span>Path: {activePath.title}</span>
-                <CloseIcon />
-              </Link>
-            ) : null}
-            <Link
-              to="/explore"
-              search={{}}
-              className="link-action active-filters__clear"
-            >
-              Reset all
-            </Link>
-          </div>
-        </section>
-      ) : null}
+      <ExploreActiveFilters
+        query={query}
+        activeDepartment={activeDepartment}
+        departmentId={departmentId}
+        liveDepartmentName={liveDepartmentName}
+        pathSlug={pathSlug}
+        activePath={activePath}
+      />
 
       {result.message && result.status === "partial" ? (
         <Alert className="result-alert">
@@ -590,8 +479,15 @@ function Explore() {
         <section aria-live="polite">
           <Empty>
             <EmptyHeader>
+              {/* "needs a moment" is honest only for transient kinds —
+                  a 4xx/parse failure is deterministic and no wait fixes
+                  it (the typed field existed unwired since 09-25). */}
               <span className="eyebrow">Collection unavailable</span>
-              <EmptyTitle>The index needs a moment.</EmptyTitle>
+              <EmptyTitle>
+                {result.failure === "4xx" || result.failure === "parse"
+                  ? "This view can't be loaded."
+                  : "The index needs a moment."}
+              </EmptyTitle>
               <EmptyDescription>{result.message}</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
@@ -677,18 +573,35 @@ function Explore() {
 }
 
 function ExplorePending() {
-  const { q, department, departmentId } = useSearch({ from: "/explore" });
+  const {
+    q,
+    department,
+    departmentId,
+    path: pathSlug,
+  } = useSearch({
+    from: "/explore",
+  });
   // Trimmed like Explore below — the input key/defaultValue must match
   // across the pending→main transition or the field remounts with a
   // different value (devin 09-10 12:50).
   const query = (q ?? "").trim();
   const activeDepartment = department ?? "all";
+  // Same precedence as the loaded route — departmentId wins over a name
+  // (needs-work 09-26 label-vs-grid fix); a pending flash of the wrong
+  // department name is the same lie.
+  const departmentIdName =
+    departmentId !== undefined ? departmentNameById(departmentId) : undefined;
   const liveDepartmentName =
-    activeDepartment !== "all"
-      ? activeDepartment
+    departmentIdName ??
+    (activeDepartment !== "all" ? activeDepartment : undefined);
+  const pressedDepartment =
+    departmentIdName !== undefined &&
+    (exploreDepartmentFilters as readonly string[]).includes(departmentIdName)
+      ? departmentIdName
       : departmentId !== undefined
-        ? departmentNameById(departmentId)
-        : undefined;
+        ? undefined
+        : activeDepartment;
+  const activePath = curatedPaths.find((path) => path.slug === pathSlug);
 
   return (
     <main className="page-frame explore-page" aria-busy="true">
@@ -710,6 +623,21 @@ function ExplorePending() {
           activeDepartmentId={departmentId}
         />
       </search>
+      <ExploreTools
+        query={query}
+        activeDepartment={activeDepartment}
+        departmentId={departmentId}
+        pressedDepartment={pressedDepartment}
+        hasActivePath={activePath !== undefined}
+      />
+      <ExploreActiveFilters
+        query={query}
+        activeDepartment={activeDepartment}
+        departmentId={departmentId}
+        liveDepartmentName={liveDepartmentName}
+        pathSlug={pathSlug}
+        activePath={activePath}
+      />
       <div className="collection-loading">
         <div className="collection-loading__heading">
           <span className="eyebrow">Reading the index</span>
@@ -738,6 +666,178 @@ function ExplorePending() {
       </div>
     </main>
   );
+}
+
+// The tools row and the active-filter pills are pure URL-state chrome —
+// no loader data — so the pending screen renders the real controls the
+// visitor was just editing instead of dropping them (grok 09-19).
+function ExploreTools({
+  query,
+  activeDepartment,
+  departmentId,
+  pressedDepartment,
+  hasActivePath,
+  count,
+}: {
+  query: string;
+  activeDepartment: ExploreDepartmentFilter;
+  departmentId?: number;
+  pressedDepartment?: string;
+  hasActivePath: boolean;
+  count?: string;
+}) {
+  const navigate = useNavigate({ from: "/explore" });
+
+  function changeDepartment(nextValues: string[]) {
+    const nextDepartment = nextValues[0];
+    if (!isExploreDepartmentFilter(nextDepartment)) return;
+
+    void navigate({
+      search: {
+        q: query || undefined,
+        department: nextDepartment === "all" ? undefined : nextDepartment,
+        path: undefined,
+        departmentId: undefined,
+        page: undefined,
+      },
+    });
+  }
+
+  return (
+    <div className="explore-tools">
+      <fieldset className="filter-group">
+        <legend className="eyebrow">Department</legend>
+        <ToggleGroup
+          aria-label="Department"
+          onValueChange={changeDepartment}
+          value={pressedDepartment === undefined ? [] : [pressedDepartment]}
+          variant="outline"
+          spacing={0}
+        >
+          {exploreDepartmentFilters.map((option) => (
+            <ToggleGroupItem key={option} value={option}>
+              {option === "all" ? "All departments" : option}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </fieldset>
+      {count !== undefined ? (
+        <span className="explore-count mono">{count}</span>
+      ) : null}
+      {query ||
+      hasActivePath ||
+      departmentId !== undefined ||
+      activeDepartment !== "all" ? (
+        <Link to="/explore" search={{}} className="link-action explore-clear">
+          Return to review set <span aria-hidden="true">↗</span>
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+function ExploreActiveFilters({
+  query,
+  activeDepartment,
+  departmentId,
+  liveDepartmentName,
+  pathSlug,
+  activePath,
+}: {
+  query: string;
+  activeDepartment: ExploreDepartmentFilter;
+  departmentId?: number;
+  liveDepartmentName?: string;
+  pathSlug?: string;
+  activePath?: (typeof curatedPaths)[number];
+}) {
+  return query ||
+    activePath ||
+    departmentId !== undefined ||
+    activeDepartment !== "all" ? (
+    <section className="active-filters" aria-label="Active filters">
+      <span className="eyebrow">Filtered by:</span>
+      <div className="active-filters__row">
+        {query ? (
+          <Link
+            to="/explore"
+            search={{
+              q: undefined,
+              department:
+                activeDepartment === "all" ? undefined : activeDepartment,
+              path: pathSlug,
+              departmentId,
+            }}
+            className="filter-pill"
+            aria-label={`Remove search filter "${query}"`}
+          >
+            <span>Query: “{query}”</span>
+            <CloseIcon />
+          </Link>
+        ) : null}
+        {/* When the URL carries both a name and an id, the id owns the
+            query — rendering the name pill too claimed two departments
+            and its remove-link killed the live id filter (needs-work
+            10-01). */}
+        {activeDepartment !== "all" && departmentId === undefined ? (
+          <Link
+            to="/explore"
+            search={{
+              q: query || undefined,
+              department: undefined,
+              path: pathSlug,
+              departmentId: undefined,
+            }}
+            className="filter-pill"
+            aria-label={`Remove department filter "${activeDepartment}"`}
+          >
+            <span>Dept: {activeDepartment}</span>
+            <CloseIcon />
+          </Link>
+        ) : null}
+        {departmentId !== undefined && liveDepartmentName ? (
+          <Link
+            to="/explore"
+            search={{
+              q: query || undefined,
+              department: undefined,
+              path: undefined,
+              departmentId: undefined,
+            }}
+            className="filter-pill"
+            aria-label={`Remove department filter "${liveDepartmentName}"`}
+          >
+            <span>Dept: {liveDepartmentName}</span>
+            <CloseIcon />
+          </Link>
+        ) : null}
+        {activePath ? (
+          <Link
+            to="/explore"
+            search={{
+              q: query || undefined,
+              department:
+                activeDepartment === "all" ? undefined : activeDepartment,
+              path: undefined,
+              departmentId,
+            }}
+            className="filter-pill"
+            aria-label={`Remove path filter "${activePath.title}"`}
+          >
+            <span>Path: {activePath.title}</span>
+            <CloseIcon />
+          </Link>
+        ) : null}
+        <Link
+          to="/explore"
+          search={{}}
+          className="link-action active-filters__clear"
+        >
+          Reset all
+        </Link>
+      </div>
+    </section>
+  ) : null;
 }
 
 // One search form for Explore and ExplorePending — the pending screen

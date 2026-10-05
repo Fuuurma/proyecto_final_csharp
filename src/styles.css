@@ -2,8 +2,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
 :root {
   --paper: #f3f1eb;
   --paper-deep: #e9e6dd;
@@ -19,6 +17,11 @@
   --focus-ring: var(--ink);
   --focus-ring-on-dark: var(--white);
   --image-field: #171815;
+  /* Primary text on the dark image field (hero record, captions). */
+  --on-image-field: #c8cbc4;
+  /* Muted text on the dark image field (credits, subtitles) — must not
+     compete with the artwork; ~7.4:1 on #171815. */
+  --on-image-field-muted: #9aa09a;
   --white: #fffefa;
   --serif: "Newsreader Variable", "Newsreader", Georgia, serif;
   --sans: "DM Sans Variable", "DM Sans", Helvetica, Arial, sans-serif;
@@ -264,7 +267,7 @@ img {
 
 .wordmark__sub {
   padding-left: 17px;
-  color: var(--red);
+  color: var(--ink);
   font-size: 16px;
   font-style: italic;
   letter-spacing: -0.02em;
@@ -330,6 +333,8 @@ img {
 }
 
 .site-header__note {
+  /* A real path, not decorative copy: the provenance line links to the
+     About note that substantiates it (grok 09-16). */
   justify-self: end;
   margin: 0;
   color: var(--archive);
@@ -337,6 +342,13 @@ img {
   font-size: 9px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-decoration: none;
+}
+
+.site-header__note:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
 }
 
 .hero {
@@ -371,14 +383,18 @@ img {
 
 .hero__copy h1,
 .not-found h1 {
-  max-width: 12ch;
+  /* The display line serves the artwork — a huge-type ceiling that leaves
+     it no room is a named anti-pattern (DESIGN.md); 16ch + balance keeps
+     the red italic phrase whole (grok 09-16/17). */
+  max-width: 16ch;
   margin: 1.15rem 0 1.35rem;
   padding-bottom: 0.12em;
   font-family: var(--serif);
-  font-size: clamp(3rem, 5.2vw, 5.25rem);
+  font-size: clamp(2.75rem, 4.2vw, 3.75rem);
   font-weight: 400;
-  letter-spacing: -0.055em;
-  line-height: 1.02;
+  letter-spacing: -0.05em;
+  line-height: 1.05;
+  text-wrap: balance;
 }
 
 .hero__copy h1 em {
@@ -494,11 +510,11 @@ img {
 
 .hero__record {
   width: 100%;
-  color: #c8cbc4;
+  color: var(--on-image-field);
 }
 
 .hero__record .eyebrow {
-  color: #9aa09a;
+  color: var(--on-image-field-muted);
 }
 
 .hero__record-row {
@@ -519,7 +535,7 @@ img {
 
 .hero__record p {
   margin: 0.3rem 0 0;
-  color: #9aa09a;
+  color: var(--on-image-field-muted);
   font-size: 12px;
 }
 
@@ -571,7 +587,7 @@ img {
   align-items: end;
   gap: 4rem;
   padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 
 .home-gallery__intro h2 {
@@ -673,7 +689,6 @@ img {
 
 .home-gallery__caption h3 {
   margin: 0.4rem 0 0.35rem;
-  overflow-wrap: anywhere;
   font-family: var(--serif);
   font-size: clamp(1.15rem, 1.8vw, 1.7rem);
   font-weight: 400;
@@ -691,7 +706,11 @@ img {
 }
 
 .home-gallery__classification {
-  text-transform: none;
+  /* Classification is metadata, not an index field — sans face, archive
+     ink (grok 09-14: mono is for accession numbers and coordinates). */
+  color: var(--archive);
+  font-family: var(--sans);
+  font-size: 12px;
 }
 
 /* Artist byline in the grotesk voice: DESIGN.md reserves mono for
@@ -701,14 +720,15 @@ img {
   font-size: 0.85rem;
 }
 
-.home-gallery__footer {
+.home-gallery__footer,
+.collection-index__footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 2rem;
   margin-top: clamp(3rem, 7vw, 7rem);
   padding-top: 1rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .paths {
@@ -744,7 +764,7 @@ img {
 .path-card {
   display: flex;
   flex-direction: column;
-  border-top: 2px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .path-card--2 {
@@ -827,7 +847,7 @@ img {
 .collection-index__list {
   display: grid;
   gap: 0;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .collection-index__item {
@@ -880,7 +900,7 @@ img {
   gap: 2rem 4rem;
   align-items: end;
   padding-bottom: 2.5rem;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 
 .departments-heading h1 {
@@ -941,7 +961,7 @@ img {
   margin: 1.5rem 0 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .department-ledger__item {
@@ -952,6 +972,17 @@ img {
   padding-block: 1.1rem;
   border-bottom: 1px solid var(--rule);
   transition: background-color 150ms ease;
+}
+
+.department-ledger__empty {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-block: 1.5rem;
+  border-bottom: 1px solid var(--rule);
+  color: var(--archive);
+  font-size: 12px;
 }
 
 .department-ledger__item:hover {
@@ -1029,6 +1060,14 @@ img {
   background: var(--image-field);
 }
 
+/* The seeded source object can leave the index — keep the slot honest
+   instead of vanishing (review 09-19 P2). */
+.about-hero__image--empty {
+  display: flex;
+  min-height: 16rem;
+  align-items: end;
+}
+
 .about-hero__image figcaption {
   display: flex;
   justify-content: space-between;
@@ -1039,7 +1078,7 @@ img {
 }
 
 .about-hero__image figcaption .mono {
-  color: #c7d2c5;
+  color: var(--on-image-field);
 }
 
 .about-notes {
@@ -1047,7 +1086,7 @@ img {
   grid-template-columns: minmax(12rem, 0.65fr) minmax(0, 1.35fr);
   gap: clamp(2rem, 7vw, 8rem);
   padding-block: 1.5rem 8rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .about-notes__intro h2 {
@@ -1063,7 +1102,7 @@ img {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .about-notes__list article {
@@ -1099,16 +1138,21 @@ img {
   align-items: start;
   margin-bottom: 7rem;
   padding: 1.75rem 0;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
   background: transparent;
   color: var(--ink);
 }
 
 .collection-note__mark {
-  color: var(--red);
-  font-size: 1.1rem;
+  /* A source cue, not chrome: spelled out at caption size rather than a
+     cryptic red monogram (grok 09-16). */
+  color: var(--archive);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 .collection-note__copy h2 {
@@ -1169,12 +1213,8 @@ img {
   opacity: 1;
 }
 
-.artwork-card:hover .artwork-image img,
-.home-gallery__item:hover .artwork-image img,
-.path-card:hover .artwork-image img,
-.collection-index__item:hover .artwork-image img {
-  transform: scale(1.02);
-}
+/* No hover zoom on the artwork itself — a scale(1.02) decorates the
+   record image; preserved proportions are the promise (grok 09-15). */
 
 .artwork-image__missing {
   display: flex;
@@ -1196,7 +1236,7 @@ img {
 
 .artwork-image__missing small {
   margin-top: 0.5rem;
-  color: #777a74;
+  color: var(--on-image-field-muted);
   font-size: 9px;
 }
 
@@ -1300,7 +1340,7 @@ img {
   gap: 0.85rem;
   margin-top: 2rem;
   padding: 0.6rem 0.75rem 0.6rem 1rem;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--rule);
   background: var(--white);
 }
 
@@ -1380,7 +1420,7 @@ img {
 }
 
 .search-form input::placeholder {
-  color: #969993;
+  color: var(--archive);
 }
 
 .search-form [data-slot="input"] {
@@ -1458,8 +1498,8 @@ img {
 }
 
 .filter-group [data-slot="toggle-group-item"][aria-pressed="true"] {
-  border-color: var(--ink);
-  background: var(--ink);
+  border-color: var(--red);
+  background: var(--red);
   color: var(--white);
 }
 
@@ -1524,11 +1564,12 @@ img {
 }
 
 .path-chip {
+  /* Chips are controls, not display moments — sans face; the serif italic
+     is reserved for titles (grok 09-19). */
   color: var(--archive);
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: 14px;
-  font-style: italic;
-  letter-spacing: -0.02em;
+  font-weight: 500;
   border-bottom: 1px solid transparent;
 }
 
@@ -1558,21 +1599,21 @@ img {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.25rem 0.55rem;
-  border: 1px solid var(--rule);
-  background: var(--paper-deep);
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
   color: var(--ink);
   font-family: var(--sans);
   font-size: 11px;
   line-height: 1;
   transition:
     border-color 150ms ease,
-    color 150ms ease,
-    background-color 150ms ease;
+    color 150ms ease;
 }
 
 .filter-pill:hover {
-  border-color: var(--red);
+  border-bottom-color: var(--red);
   color: var(--red);
 }
 
@@ -1733,10 +1774,7 @@ img {
   justify-content: space-between;
   gap: 1rem;
   color: var(--archive);
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  font-size: 12px;
 }
 
 .artwork-card__line span:last-child {
@@ -1747,7 +1785,6 @@ img {
 
 .artwork-card h3 {
   margin: 0.4rem 0 0;
-  overflow-wrap: anywhere;
   font-family: var(--serif);
   font-size: clamp(1.15rem, 1.6vw, 1.5rem);
   font-weight: 400;
@@ -2049,7 +2086,7 @@ img {
 
 .image-dialog-subtitle {
   margin: 0.25rem 0 0;
-  color: #9aa09a;
+  color: var(--on-image-field-muted);
   font-size: 13px;
 }
 
@@ -2104,24 +2141,37 @@ img {
   max-width: 100%;
   max-height: min(72vh, 840px);
   object-fit: contain;
-  transition:
-    max-width 200ms ease,
-    max-height 200ms ease;
 }
 
 .image-dialog-stage.is-zoomed .image-dialog-asset {
+  /* Width — not transform — grows the box, so the stage's overflow:auto
+     yields a real scroll extent: panning is native scroll, and tall
+     works stay reachable instead of clipping (grok 09-17 #219). The
+     keyframe eases the jump from the unzoomed size back to 1; the old
+     max-width/max-height transition declared 200ms but could never
+     interpolate to `none`, so it snapped (grok 09-14, 09-16). */
   max-width: none;
   max-height: none;
   width: 180%;
   height: auto;
+  transform-origin: top left;
+  animation: image-zoom-in 200ms ease;
+}
+
+@keyframes image-zoom-in {
+  from {
+    transform: scale(0.556);
+  }
+
+  to {
+    transform: scale(1);
+  }
 }
 
 .image-dialog-credit {
   margin: 0;
-  color: #9aa09a;
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  color: var(--on-image-field-muted);
+  font-size: 12px;
 }
 
 .detail-image-field .artwork-image {
@@ -2145,10 +2195,7 @@ img {
 .image-credit {
   margin: 0.75rem 0 0;
   color: var(--archive);
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  font-size: 12px;
 }
 
 .detail-copy {
@@ -2160,7 +2207,6 @@ img {
   max-width: 22ch;
   margin: 0.85rem 0 0;
   padding-bottom: 0.08em;
-  overflow-wrap: anywhere;
   font-family: var(--serif);
   font-size: clamp(2.4rem, 3.8vw, 3.7rem);
   font-weight: 400;
@@ -2223,9 +2269,21 @@ img {
   transition: color 150ms ease;
 }
 
+.metadata-row__copy-btn > span:first-child {
+  /* Same hairline the metadata links carry — without it the cell read as
+     plain metadata with only cursor:pointer saying it is a button
+     (grok 09-24 #330). */
+  border-bottom: 1px solid var(--rule);
+}
+
 .metadata-row__copy-btn:hover,
 .metadata-row__copy-btn:focus-visible {
   color: var(--red);
+}
+
+.metadata-row__copy-btn:hover > span:first-child,
+.metadata-row__copy-btn:focus-visible > span:first-child {
+  border-bottom-color: var(--red);
 }
 
 .metadata-row__copied {
@@ -2270,7 +2328,7 @@ img {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   margin-bottom: 6rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
 }
 
@@ -2355,13 +2413,21 @@ img {
 
 .artwork-views__item img {
   display: block;
-  width: 100%;
-  aspect-ratio: 1;
+  /* Uniform height, natural width — the thumbnail keeps the view's own
+     proportions instead of squaring every source (grok 09-17 #220,
+     10-05 #11). */
+  height: 3.5rem;
+  width: auto;
+  max-width: 7rem;
   object-fit: contain;
 }
 
 .artwork-views__item.is-active {
+  /* Color alone can't carry the selected view — the border thickens too
+     (padding shrinks to keep the box identical) (grok 09-23 P2). */
+  padding: calc(0.4rem - 1px);
   border-color: var(--red);
+  border-width: 2px;
 }
 
 .detail-tags {
@@ -2532,37 +2598,8 @@ body:has(.selection-tray.is-collapsed) {
 }
 
 .selection-empty {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
   min-height: 28rem;
-  border-top: 1px solid var(--ink);
-}
-
-.selection-empty__image-link {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: clamp(1.25rem, 3vw, 2.5rem);
-  background: var(--image-field);
-}
-
-.selection-empty__image-link .artwork-image {
-  background: transparent;
-}
-
-.selection-empty__image-caption {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  color: #9aa09a;
-}
-
-.selection-empty__image-caption span:last-child {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--white);
+  border-top: 1px solid var(--rule);
 }
 
 .selection-toolbar {
@@ -2653,7 +2690,7 @@ body:has(.selection-tray.is-collapsed) {
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: 2.5rem 1.5rem;
   padding-block: 2rem 6rem;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 
 .selection-row {
@@ -2665,7 +2702,9 @@ body:has(.selection-tray.is-collapsed) {
 
 .selection-row__index {
   margin-right: 0.55rem;
-  color: var(--red);
+  /* Ordinals are archival index data, not state — the accent stays
+     reserved for meaningful moments (grok 09-17). */
+  color: var(--archive);
 }
 
 .selection-row__image {
@@ -2717,13 +2756,24 @@ body:has(.selection-tray.is-collapsed) {
     background-color 150ms ease;
 }
 
+@media (pointer: coarse) {
+  /* Selection reorder/remove targets sit under the 44px touch floor on
+     coarse pointers (grok 09-23 #326). Desktop keeps the compact row. */
+  .icon-button {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+}
+
 .icon-button:hover:not(:disabled) {
   color: var(--red);
   background-color: var(--paper-deep);
 }
 
 .icon-button:disabled {
-  color: var(--rule);
+  /* --rule (~1.3:1) read as invisible rather than disabled (grok 09-16). */
+  color: var(--archive);
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
@@ -2868,7 +2918,7 @@ body:has(.selection-tray.is-collapsed) {
   gap: 3rem;
   margin-top: 5rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
 }
 
 .about-page__columns h2 {
@@ -2882,6 +2932,15 @@ body:has(.selection-tray.is-collapsed) {
 .about-page__columns p {
   color: var(--archive);
   font-size: 13px;
+}
+
+.about-page__cta {
+  /* Adjacent bare link-actions collapsed into one run-on line — the pair
+     needs a real gap container (grok 10-02). */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin-top: 1.5rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2903,13 +2962,6 @@ body:has(.selection-tray.is-collapsed) {
 
   .artwork-image img {
     opacity: 1;
-    transform: none;
-  }
-
-  .artwork-card:hover .artwork-image img,
-  .home-gallery__item:hover .artwork-image img,
-  .path-card:hover .artwork-image img,
-  .collection-index__item:hover .artwork-image img {
     transform: none;
   }
 
@@ -3088,7 +3140,8 @@ body:has(.selection-tray.is-collapsed) {
     font-size: clamp(1.15rem, 4.5vw, 1.45rem);
   }
 
-  .home-gallery__footer {
+  .home-gallery__footer,
+  .collection-index__footer {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.75rem;
@@ -3331,14 +3384,6 @@ body:has(.selection-tray.is-collapsed) {
     padding: 4rem 1.5rem;
   }
 
-  .selection-empty {
-    grid-template-columns: 1fr;
-  }
-
-  .selection-empty__image-link {
-    padding: 1.5rem;
-  }
-
   .about-page {
     padding-block: 5rem 7rem;
   }
@@ -3509,6 +3554,12 @@ body:has(.selection-tray.is-collapsed) {
   .artwork-card__actions,
   .selection-row__actions {
     display: none;
+  }
+
+  /* The actions cell is hidden above; keep the meta grid one column or it
+     reserves a dead trailing track on paper (grok 09-17 #209). */
+  .artwork-card__meta {
+    grid-template-columns: 1fr;
   }
 
   body,

@@ -1,11 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArtworkImage } from "@/components/artwork-image";
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  ArrowUpRightIcon,
-  CloseIcon,
-} from "@/components/icons";
+import { ArrowDownIcon, ArrowUpIcon, CloseIcon } from "@/components/icons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -98,22 +93,16 @@ function Selection() {
               >
                 Find a work
               </Link>
+              <Link
+                to="/art/$objectId"
+                params={{ objectId: String(featuredArtwork.id) }}
+                className="link-action"
+              >
+                Open {featuredArtwork.displayTitle} — one we keep returning to{" "}
+                <span aria-hidden="true">→</span>
+              </Link>
             </EmptyContent>
           </Empty>
-          <Link
-            to="/art/$objectId"
-            params={{ objectId: String(featuredArtwork.id) }}
-            className="selection-empty__image-link"
-            aria-label={`Open ${featuredArtwork.displayTitle}`}
-          >
-            <ArtworkImage artwork={featuredArtwork} />
-            <span className="selection-empty__image-caption mono">
-              <span>Featured object</span>
-              <span>
-                Open record <ArrowUpRightIcon />
-              </span>
-            </span>
-          </Link>
         </section>
       ) : (
         <>
@@ -132,7 +121,7 @@ function Selection() {
                   if (typeof window !== "undefined") window.print();
                 }}
               >
-                Print ledger
+                Print this view
               </Button>
               <Separator orientation="vertical" aria-hidden="true" />
               <AlertDialog>
@@ -266,9 +255,12 @@ function CopyListButton({ items }: { items: SelectionItem[] }) {
       size="sm"
       className="button-quiet"
       onClick={handleCopy}
-      aria-label="Copy saved works list to clipboard"
     >
-      {copyFailed ? "Copy failed" : copied ? "List copied" : "Copy list"}
+      {copyFailed
+        ? "Copy failed"
+        : copied
+          ? "List copied"
+          : "Copy list as text"}
     </Button>
   );
 }

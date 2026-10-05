@@ -58,7 +58,9 @@ export function SiteHeader() {
           </Link>
         </nav>
 
-        <p className="site-header__note">An independent lens on open access</p>
+        <Link to="/about" className="site-header__note">
+          An independent lens on open access
+        </Link>
       </div>
     </header>
   );
