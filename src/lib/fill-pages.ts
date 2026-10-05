@@ -1,11 +1,10 @@
 import type { Artwork } from "./met/normalize";
 
 /**
- * Memoization for the explore route's tail-fill: navigating back to
- * `?page=N` used to refetch pages 2..N on every mount (correct but O(n)
- * per visit). This layer keeps ONE source of truth — the route still
- * renders `[...result.artworks, ...extra]` — and only skips network
- * round-trips for pages it has already seen in this session.
+ * Memoization for Explore's cumulative page view: the loader supplies the
+ * selected page, and this cache restores preceding pages without repeating
+ * network round-trips already paid in this session. The route renders
+ * `[...extra, ...result.artworks]` in collection order.
  */
 
 export type PageCache<T> = Map<string, T[]>;

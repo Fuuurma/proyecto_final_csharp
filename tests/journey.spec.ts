@@ -48,12 +48,12 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
     page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
   ).toBeVisible();
 
-  // The persisted payload is the versioned envelope, and a reload
+  // The persisted payload is the mergeable versioned document, and a reload
   // rehydrates the saved state from it.
   const stored = await page.evaluate(() =>
     window.localStorage.getItem("meet-the-met.selection"),
   );
-  expect(JSON.parse(stored ?? "null")).toMatchObject({ version: 1 });
+  expect(JSON.parse(stored ?? "null")).toMatchObject({ version: 2 });
   await page.reload();
   await expect(
     page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
@@ -77,6 +77,51 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { name: "Keep works" }).click();
   await expect(page.getByRole("alertdialog")).toBeHidden();
+});
+
+test("selection edits synchronize across open tabs", async ({
+  page,
+  context,
+}) => {
+  const otherTab = await context.newPage();
+  await Promise.all([page.goto("/art/436535"), otherTab.goto("/art/436524")]);
+
+  const saveWheat = page.getByRole("button", {
+    name: /Save Wheat Field with Cypresses/,
+  });
+  const saveSunflowers = otherTab.getByRole("button", {
+    name: /Save Sunflowers/,
+  });
+  await expect(saveWheat).toBeEnabled();
+  await expect(saveSunflowers).toBeEnabled();
+
+  await saveWheat.click();
+  await expect(
+    otherTab.getByRole("button", {
+      name: /Remove Wheat Field with Cypresses from your selection/,
+    }),
+  ).toBeVisible();
+
+  await saveSunflowers.click();
+  await expect(
+    page.getByRole("button", {
+      name: /Remove Sunflowers from your selection/,
+    }),
+  ).toBeVisible();
+
+  await selectionNav(page).click();
+  await expect(page).toHaveURL(/\/selection$/);
+  await expect(page.locator(".selection-row__meta")).toHaveCount(2);
+  await expect(
+    page.locator(".selection-row__meta").getByRole("heading", {
+      name: "Wheat Field with Cypresses",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".selection-row__meta").getByRole("heading", {
+      name: "Sunflowers",
+    }),
+  ).toBeVisible();
 });
 
 test("Detail Previous/Next follow the browsed Explore order", async ({
@@ -195,6 +240,55 @@ test("Home department index opens a bounded department view", async ({
   await expect(page.locator(".explore-count")).toHaveText("6 / 6 review works");
 });
 
+test("Collection index intro keeps its sticky header offset", async ({
+  page,
+}) => {
+  // The intro is a sibling of .site-header — its sticky top only
+  // resolves while --header-h lives on :root (review 10-05 11:17 #4).
+  await page.goto("/");
+  const intro = page.locator(".collection-index__intro");
+  await expect(intro).toBeVisible();
+
+  const geometry = await intro.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    const root = getComputedStyle(document.documentElement);
+    return {
+      position: computed.position,
+      top: computed.top,
+      headerH: root.getPropertyValue("--header-h").trim(),
+      rem: parseFloat(root.fontSize),
+    };
+  });
+  const expectedTop = parseFloat(geometry.headerH) + geometry.rem;
+
+  if ((page.viewportSize()?.width ?? 0) <= 760) {
+    // The 760px media block deliberately unpins the intro; the token
+    // still narrows the header it would clear.
+    expect(geometry.position).toBe("static");
+    expect(geometry.headerH).toBe("68px");
+    return;
+  }
+
+  expect(geometry.position).toBe("sticky");
+  expect(geometry.headerH).toBe("76px");
+  expect(geometry.top).toBe(`${expectedTop}px`);
+
+  // Scroll the index section's midpoint to the viewport center — safely
+  // inside the sticky range at both ends (scrolling to the page bottom
+  // would clamp the intro against the section's bottom edge instead).
+  const pinned = await intro.evaluate((el) => {
+    const section = el.closest(".collection-index");
+    if (!section) {
+      return null;
+    }
+    const rect = section.getBoundingClientRect();
+    const delta = rect.top + rect.height / 2 - window.innerHeight / 2;
+    window.scrollTo({ top: window.scrollY + delta, behavior: "instant" });
+    return el.getBoundingClientRect().top;
+  });
+  expect(pinned).toBeCloseTo(expectedTop, 0);
+});
+
 test("About keeps the source and working rules in view", async ({ page }) => {
   await page.goto("/about");
 
@@ -246,6 +340,62 @@ test("A broad Explore search can load another page of the index", async ({
   await expect(page.locator(".artwork-card")).not.toHaveCount(SEARCH_PAGE_SIZE);
   const after = await page.locator(".artwork-card").count();
   expect(after).toBeGreaterThan(SEARCH_PAGE_SIZE);
+});
+
+// Regression: a stale path must not suppress the selected page of live results.
+test("Explore restores live pages through stale paths, filters, and browser history", async ({
+  page,
+}) => {
+  await page.goto("/explore?q=e&path=stale-room&page=2");
+  await expect(page.getByRole("heading", { name: "“e”" })).toBeVisible();
+  await expect
+    .poll(() => page.locator(".artwork-card").count())
+    .toBeGreaterThan(SEARCH_PAGE_SIZE);
+
+  // A new department filter clears the stale path and selected page while
+  // keeping the live query; browser back restores the shareable prior state.
+  await page.getByRole("button", { name: "Asian Art", exact: true }).click();
+  await expect
+    .poll(() => {
+      const search = new URL(page.url()).searchParams;
+      return {
+        q: search.get("q"),
+        department: search.get("department"),
+        path: search.get("path"),
+        page: search.get("page"),
+      };
+    })
+    .toEqual({ q: "e", department: "Asian Art", path: null, page: null });
+
+  await page.goBack();
+  await expect
+    .poll(() => {
+      const search = new URL(page.url()).searchParams;
+      return [search.get("q"), search.get("path"), search.get("page")];
+    })
+    .toEqual(["e", "stale-room", "2"]);
+  await expect
+    .poll(() => page.locator(".artwork-card").count())
+    .toBeGreaterThan(SEARCH_PAGE_SIZE);
+
+  // Department-only page 2 is empty in this fixture, so the prior page must
+  // be restored even though an unrelated path slug remains in the URL.
+  await page.goto("/explore?department=Asian%20Art&path=stale-room&page=2");
+  await expect(page.getByRole("heading", { name: "Asian Art" })).toBeVisible();
+  await expect(page.locator(".artwork-card")).toHaveCount(6);
+  await expect(page.locator(".explore-count")).toHaveText("6 / 6 review works");
+
+  // A recognized curated path still owns its own ordered three-work set.
+  await page.goto("/explore?path=van-gogh-late-light&page=2");
+  await expect(
+    page.getByRole("heading", { name: "Van Gogh / late light" }),
+  ).toBeVisible();
+  await expect(page.locator(".artwork-card")).toHaveCount(3);
+  await expect(
+    page
+      .locator(".path-chip-row")
+      .getByRole("link", { name: "Van Gogh / late light", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
 });
 
 test("Departments index opens a review room and a live department", async ({
@@ -391,4 +541,177 @@ test("A saved work still has a local record when the live object is unavailable"
     page.getByRole("heading", { name: "A local-only work" }),
   ).toBeVisible();
   await expect(page.getByText("A remembered maker")).toBeVisible();
+});
+
+/**
+ * MTM-TOUCH-ZOOM-CUE-01: the high-resolution cue was `opacity: 0` and
+ * revealed only by `:hover` / `:focus-visible`. On a coarse pointer
+ * neither exists before the first tap, so a touch user saw a plain
+ * picture and had no way to know tapping it opened the full view.
+ *
+ * This is the behavioral half of the contract: a real browser with a
+ * coarse pointer emulated, asserting the cue is actually painted and
+ * legible BEFORE any interaction. A source pin cannot prove that, and
+ * the previous test suite had no coverage of this case at all.
+ */
+test.describe("inspect cue by pointer type", () => {
+  const cue = (page: Page) => page.locator(".detail-image-hint");
+
+  /**
+   * The dev server compiles /art/:id on demand, so the first navigation
+   * to a given object can answer ERR_EMPTY_RESPONSE while the route
+   * builds. playwright.config.ts documents retries as the intended
+   * absorber for that, but a cold-start failure inside a new test is
+   * indistinguishable from a real one, so these cases warm the route
+   * explicitly and only then assert. A test that passes on retry 2 is
+   * not evidence.
+   */
+  const gotoArtwork = async (page: Page, id = "436535") => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await page.goto(`/art/${id}`);
+        return;
+      } catch (error) {
+        const cold = /ERR_EMPTY_RESPONSE|ECONNREFUSED/.test(
+          (error as Error).message,
+        );
+        if (!cold || attempt >= 3) throw error;
+        await page.waitForTimeout(1000);
+      }
+    }
+  };
+
+  // No describe-level test.use({ hasTouch }): that would apply to the
+  // desktop hover test too, and a touch context has no hover to reveal
+  // the cue with. The touch cases build their own coarse-pointer
+  // context below; this one runs on the project's normal device.
+
+  test("a touch user sees the inspect cue without hovering or focusing", async ({
+    browser,
+  }) => {
+    // A fresh context so the emulation applies to this page only and
+    // cannot leak into the desktop project running in parallel.
+    const context = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 390, height: 844 },
+      deviceScaleFactor: 3,
+    });
+    const page = await context.newPage();
+    try {
+      await gotoArtwork(page);
+      const hint = cue(page);
+      await expect(hint).toBeVisible();
+
+      // Visible is not the same as painted: opacity: 0 elements report
+      // as visible to Playwright, so read the resolved value.
+      const opacity = await hint.evaluate((el) => getComputedStyle(el).opacity);
+      expect(
+        Number(opacity),
+        "the coarse-pointer cue is still transparent",
+      ).toBe(1);
+
+      // Legible at arm's length: the desktop register is 10px.
+      const fontSize = await hint.evaluate((el) =>
+        parseFloat(getComputedStyle(el).fontSize),
+      );
+      expect(fontSize).toBeGreaterThanOrEqual(12);
+
+      // The cue must not swallow the artwork — it is a plate over the
+      // image, so its backdrop has to stay translucent. Parse the
+      // computed color rather than the source: color-mix() resolves to
+      // `color(srgb r g b / a)`, which has no commas, so the obvious
+      // split-and-take-the-last regex yields NaN and fails a correct
+      // stylesheet. This handles both rgba() and color(srgb … / a).
+      const alpha = await hint.evaluate((el) => {
+        const raw = getComputedStyle(el).backgroundColor;
+        const slashed = raw.match(/\/\s*([\d.]+)\s*\)/);
+        if (slashed) return Number(slashed[1]);
+        const parts = raw.match(/[\d.]+/g);
+        return parts?.length === 4 ? Number(parts[3]) : 1;
+      });
+      expect(
+        alpha,
+        "the coarse cue's plate is opaque and hides the artwork",
+      ).toBeLessThan(1);
+
+      // And it must not be parked outside the image.
+      const offset = await hint.evaluate(
+        (el) => getComputedStyle(el).transform,
+      );
+      expect(
+        offset === "none" || offset.includes("matrix(1, 0, 0, 1, 0, 0)"),
+      ).toBe(true);
+
+      // The tap still works, and the cue is honest about what it does.
+      await page
+        .getByRole("button", { name: /Inspect .* in high resolution/ })
+        .tap();
+      await expect(page.getByRole("dialog")).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("desktop still reveals the cue on hover", async ({ page }) => {
+    // A real touch device (the `mobile` project is Pixel 7) has no
+    // hover, so asserting the hover enhancement there tests a pointer
+    // the device does not have — and would fail by design. This case
+    // is only meaningful on a fine pointer.
+    test.skip(
+      test.info().project.name === "mobile",
+      "no hover on the mobile device profile",
+    );
+    await gotoArtwork(page);
+    const hint = cue(page);
+    // At rest on a fine pointer the cue stays hidden — the archive
+    // stillness the desktop design chose.
+    await expect
+      .poll(async () =>
+        hint.evaluate((el) => Number(getComputedStyle(el).opacity)),
+      )
+      .toBe(0);
+
+    await page
+      .getByRole("button", { name: /Inspect .* in high resolution/ })
+      .hover();
+    await expect
+      .poll(async () =>
+        hint.evaluate((el) => Number(getComputedStyle(el).opacity)),
+      )
+      .toBe(1);
+  });
+
+  test("reduced motion keeps the cue static and visible on touch", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 390, height: 844 },
+      reducedMotion: "reduce",
+    });
+    const page = await context.newPage();
+    try {
+      await gotoArtwork(page);
+      const hint = cue(page);
+      await expect(hint).toBeVisible();
+      const styles = await hint.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return {
+          opacity: s.opacity,
+          transform: s.transform,
+          transition: s.transitionDuration,
+        };
+      });
+      expect(Number(styles.opacity)).toBe(1);
+      // The global reduce block drives transition-duration to 0.01ms,
+      // not 0 — a literal-zero assertion would fail a correct
+      // stylesheet. What matters is that the 180ms fade is gone.
+      expect(
+        parseFloat(styles.transition) || 0,
+        "the coarse cue still animates under reduced motion",
+      ).toBeLessThanOrEqual(0.01);
+    } finally {
+      await context.close();
+    }
+  });
 });

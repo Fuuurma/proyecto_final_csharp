@@ -347,4 +347,35 @@ describe("searchCollection", () => {
     expect(result.status).toBe("error");
     expect(result.failure).toBe("5xx");
   });
+
+  // Prevents a 429 from being hidden by the curated fallback's generic
+  // outage message.
+  it("labels curated fallback results as rate-limited", async () => {
+    setFixtureMode(false);
+    fetchMetSearchIds.mockRejectedValueOnce(
+      new MetApiError("rate-limit", "rate limited", 429),
+    );
+
+    const result = await searchCollection({
+      data: { q: "waves", department: "all", page: 1 },
+    });
+    expect(result.status).toBe("partial");
+    expect(result.failure).toBe("rate-limit");
+    expect(result.message).toMatch(/rate-limited/i);
+    expect(result.message).toMatch(/showing committed works/i);
+  });
+
+  it("surfaces rate limiting as a distinct honest search error", async () => {
+    setFixtureMode(false);
+    fetchMetSearchIds.mockRejectedValueOnce(
+      new MetApiError("rate-limit", "rate limited", 429),
+    );
+
+    const result = await searchCollection({
+      data: { q: "not-a-real-object", department: "all", page: 1 },
+    });
+    expect(result.status).toBe("error");
+    expect(result.failure).toBe("rate-limit");
+    expect(result.message).toMatch(/rate.limit/i);
+  });
 });

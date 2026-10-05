@@ -25,6 +25,20 @@ function contrast(fg: string, bg: string): number {
   return (l1 + 0.05) / (l2 + 0.05);
 }
 
+/**
+ * Slice a top-level rule from its selector to its closing brace. The
+ * selector is anchored at column 0 so an indented media-scoped override
+ * — or a comment that names the selector — cannot satisfy the pin
+ * (review 10-05 11:17 #2).
+ */
+function ruleBlock(source: string, start: RegExp): string {
+  const at = source.search(start);
+  if (at === -1) {
+    throw new Error(`expected a top-level rule matching ${start}`);
+  }
+  return source.slice(at, source.indexOf("}", at));
+}
+
 describe("archive token contrast", () => {
   const styles = readFileSync(join(here, "styles.css"), "utf8");
 
@@ -38,12 +52,24 @@ describe("archive token contrast", () => {
   });
 
   it("sticky offsets derive from the header-height token", () => {
-    expect(styles).toContain("--header-h: 76px");
-    expect(styles).toContain("--header-h: 68px");
-    const introBlock = styles.slice(
-      styles.indexOf(".collection-index__intro"),
-      styles.indexOf("}", styles.indexOf(".collection-index__intro")),
+    // .collection-index__intro is a sibling of .site-header, not a
+    // descendant — the token only reaches it when declared on :root.
+    const rootBlock = ruleBlock(styles, /^:root\s*\{/m);
+    expect(rootBlock).toContain("--header-h: 76px");
+
+    // The 68px override must stay inside the 760px media block — hoisted
+    // to the top-level :root it would silently win at every viewport
+    // (review 10-05 11:17 #1). Media blocks close at column 0.
+    const mobileBlocks = styles.match(
+      /^@media \(max-width: 760px\) \{[\s\S]*?^\}/gm,
     );
+    expect(
+      mobileBlocks?.some((block) =>
+        /:root\s*\{[^}]*--header-h:\s*68px/.test(block),
+      ),
+    ).toBe(true);
+
+    const introBlock = ruleBlock(styles, /^\.collection-index__intro\s*\{/m);
     expect(introBlock).toContain("var(--header-h)");
   });
 });

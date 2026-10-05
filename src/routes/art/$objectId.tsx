@@ -14,18 +14,18 @@ import {
 } from "react";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
+import { ArtworkRightsMetadata } from "@/components/artwork-rights-metadata";
 import { DetailSkeleton } from "@/components/detail-skeleton";
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
-  CheckIcon,
   CloseIcon,
   ExpandIcon,
-  ShareIcon,
 } from "@/components/icons";
 import { SaveButton } from "@/components/save-button";
+import { ShareButton } from "@/components/share-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -43,9 +43,11 @@ import {
   type SequenceNeighbors,
 } from "@/lib/browse-sequence";
 import type { Artwork } from "@/lib/met/normalize";
+import { artworkDetailMetaDescription } from "@/lib/met/rights";
 import {
   type ArtworkDetailResult,
   getArtwork,
+  MAX_OBJECT_ID,
 } from "@/lib/met/server-functions";
 import { getRelatedArtworks } from "@/lib/related";
 import { artworkFromSelectionItem, useSelection } from "@/lib/selection";
@@ -63,11 +65,16 @@ export const Route = createFileRoute("/art/$objectId")({
   // (react-doctor 09-16): data properties first keep head's
   // loaderData inference anchored.
   loader: ({ params }) => {
-    // Non-numeric slugs (/art/abc) are a wrong address, not a validator
-    // error — 404 instead of surfacing the Zod failure through RouteError
-    // (devin 09-09 16:57 #1).
+    // Non-numeric or out-of-range slugs (/art/abc, /art/1000000000) are
+    // wrong addresses, not validator errors — 404 instead of surfacing
+    // the Zod failure through RouteError (devin 09-09 16:57 #1;
+    // needs-work 09-12 for the cap).
     const objectId = Number(params.objectId);
-    if (!Number.isInteger(objectId) || objectId <= 0) {
+    if (
+      !Number.isInteger(objectId) ||
+      objectId <= 0 ||
+      objectId > MAX_OBJECT_ID
+    ) {
       throw notFound();
     }
     return getArtwork({ data: { objectId } });
@@ -79,14 +86,14 @@ export const Route = createFileRoute("/art/$objectId")({
       {
         name: "description",
         content:
-          "This collection object could not be loaded from the Met Open Access API.",
+          "This collection object could not be loaded from The Met collection API.",
       },
     ];
 
     if (loaderData && loaderData.status === "success") {
       const art = loaderData.artwork;
       const title = `${art.displayTitle}${art.artist ? ` — ${art.artist}` : ""} — Meet the Met`;
-      const description = `${art.displayTitle}${art.artist ? ` by ${art.artist}` : ""}${art.date ? `, ${art.date}` : ""}. ${art.medium ?? "Collection object"} from The Metropolitan Museum of Art Open Access collection.`;
+      const description = artworkDetailMetaDescription(art);
       const ogImage = art.primaryImage ?? art.primaryImageSmall;
 
       meta.length = 0;
@@ -96,6 +103,7 @@ export const Route = createFileRoute("/art/$objectId")({
         { property: "og:type", content: "article" },
         { property: "og:title", content: title },
         { property: "og:description", content: description },
+        { name: "twitter:description", content: description },
       );
       if (ogImage) {
         meta.push({ property: "og:image", content: ogImage });
@@ -122,10 +130,12 @@ function ArtworkDetail() {
   const navigate = useNavigate();
   // grok 23:45 #3: "Open image" must target the view the user has
   // tabbed into, not always the primary image. (Hooks live above the
-  // early return — react-doctor rules-of-hooks, 09-27 re-sweep.)
-  const [openImageSrc, setOpenImageSrc] = useState<string | undefined>(
-    undefined,
-  );
+  // early return — react-doctor rules-of-hooks, 09-27 re-sweep.) The
+  // pick is stored with the id of the object it was picked under —
+  // this component survives prev/next param changes while the stage
+  // remounts to the new primary, so a bare string kept offering the
+  // previous object's image (needs-work 10-04 P1).
+  const [openImage, setOpenImage] = useState<{ forId: number; src: string }>();
 
   const artwork = result?.status === "success" ? result.artwork : null;
 
@@ -207,7 +217,15 @@ function ArtworkDetail() {
     return <ArtworkUnavailable objectId={Number(objectId)} message={message} />;
   }
 
-  const related = getRelatedArtworks(artwork, curatedArtworks);
+  // Related is curated-only by design; for a live-searched object the
+  // review set isn't "related", it's a different exhibit — hide instead
+  // of implying curation coverage (head item, resolved).
+  const isCurated = curatedArtworks.some(
+    (candidate) => candidate.id === artwork.id,
+  );
+  const related = isCurated
+    ? getRelatedArtworks(artwork, curatedArtworks)
+    : { label: "", artworks: [] };
   // Deduped: a live object whose additionalImages repeat the primary
   // would otherwise yield duplicate tab keys (devin 09-09 23:37 #7).
   const imageSources = [
@@ -218,6 +236,11 @@ function ArtworkDetail() {
       ].filter((source): source is string => Boolean(source)),
     ),
   ];
+  // Honor the picked view only while its object is still on screen —
+  // after prev/next navigation the remounted stage shows the new
+  // primary and the stale pick must fall back with it.
+  const openImageSrc =
+    openImage?.forId === artwork.id ? openImage.src : undefined;
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
@@ -262,11 +285,13 @@ function ArtworkDetail() {
             key={objectId}
             artwork={artwork}
             imageSources={imageSources}
-            onActiveSrcChange={setOpenImageSrc}
+            onActiveSrcChange={(src) =>
+              setOpenImage({ forId: artwork.id, src })
+            }
           />
           <div className="detail-image-footer">
             <p className="image-credit">
-              Image: The Metropolitan Museum of Art, Open Access
+              Image: The Metropolitan Museum of Art
             </p>
             {artwork.primaryImage || artwork.primaryImageSmall ? (
               <a
@@ -347,13 +372,9 @@ function ArtworkDetail() {
               mono
               copyable
             />
-            <MetadataRow
-              label="Rights"
-              value={
-                artwork.isPublicDomain
-                  ? "Public domain"
-                  : "Rights status not stated"
-              }
+            <ArtworkRightsMetadata
+              isPublicDomain={artwork.isPublicDomain}
+              rights={artwork.rights}
             />
           </dl>
 
@@ -601,6 +622,11 @@ function ArtworkStage({
             }
             if (next !== null) {
               event.preventDefault();
+              // The tablist owns these keys — without this the same
+              // keydown kept bubbling to the window-level prev/next
+              // artwork shortcut and navigated off the record
+              // (needs-work 09-27 P1; grok 01:45 #1).
+              event.stopPropagation();
               setActiveSrc(imageSources[next]);
               document.getElementById(`view-tab-${next}`)?.focus();
             }
@@ -700,36 +726,6 @@ function ImageLightboxStage({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-function ShareButton({ artwork }: { artwork: Artwork }) {
-  const { copied, copyFailed, copy } = useCopyToClipboard(2200);
-
-  async function handleShare() {
-    const url =
-      typeof window !== "undefined"
-        ? window.location.href
-        : artwork.canonicalUrl;
-    await copy(url);
-  }
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="lg"
-      className="record-link"
-      onClick={handleShare}
-      aria-label={copied ? "Link copied to clipboard" : "Copy object page link"}
-    >
-      <span data-icon="inline-start">
-        {copied ? <CheckIcon /> : <ShareIcon />}
-      </span>
-      <span>
-        {copyFailed ? "Copy failed" : copied ? "Copied link" : "Share"}
-      </span>
-    </Button>
-  );
-}
-
 function ArtworkUnavailable({
   objectId,
   message,
@@ -793,6 +789,13 @@ function ArtworkUnavailable({
                 Met record <ArrowUpRightIcon />
               </a>
             </div>
+            <dl className="metadata-list">
+              <ArtworkRightsMetadata
+                isPublicDomain={artwork.isPublicDomain}
+                rights={artwork.rights}
+                source="saved-copy"
+              />
+            </dl>
           </div>
         </section>
       </main>
@@ -848,7 +851,9 @@ function MetadataRow({
                 : "Click to copy accession number"
             }
             aria-label={
-              copyFailed ? "Copy failed, try again" : "Copy to clipboard"
+              copyFailed
+                ? `Copy failed, try again — ${value}`
+                : `Copy accession number ${value} to clipboard`
             }
           >
             <span>{value}</span>
