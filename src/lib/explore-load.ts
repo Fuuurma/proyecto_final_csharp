@@ -65,6 +65,11 @@ export function loadMoreState(input: {
   const canLoadMore =
     input.isClient &&
     input.live &&
+    // A curated page-1 substitute already serves the whole committed
+    // set — page >= 2 can never return curated works, so offering more
+    // would swap the committed grid for an outage empty (needs-work
+    // 10-05 P1).
+    input.source !== "curated" &&
     !input.hasPath &&
     !input.fillExhausted &&
     input.remaining > 0 &&

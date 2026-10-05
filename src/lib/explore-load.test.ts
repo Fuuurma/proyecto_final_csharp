@@ -105,4 +105,20 @@ describe("loadMoreState", () => {
     );
     expect(loadMoreState({ ...base, status: "error" }).canLoadMore).toBe(false);
   });
+
+  it("never offers load-more on a curated substitute page", () => {
+    // needs-work 10-05 P1: the page-1 curated substitution returns
+    // {status:"partial", source:"curated"} under a live query, and page
+    // >= 2 can never be curated — the button's click would discard the
+    // committed works for an outage empty. The substitute IS the whole
+    // committed set; there is no next page.
+    expect(
+      loadMoreState({
+        ...base,
+        source: "curated",
+        status: "partial",
+        remaining: 8,
+      }).canLoadMore,
+    ).toBe(false);
+  });
 });
