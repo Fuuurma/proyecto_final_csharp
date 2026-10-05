@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArtworkImage } from "@/components/artwork-image";
 import { ArrowUpRightIcon } from "@/components/icons";
+import { ReviewDepartmentCard } from "@/components/review-department-card";
 import { buttonVariants } from "@/components/ui/button";
 import {
   curatedArtworks,
@@ -234,35 +235,9 @@ function Home() {
           </p>
         </div>
         <div className="collection-index__list">
-          {reviewDepartments.map((department) => {
-            const artwork = curatedArtworks.find(
-              (candidate) => candidate.id === department.artworkId,
-            );
-            const count = curatedArtworks.filter(
-              (candidate) => candidate.department === department.name,
-            ).length;
-
-            if (!artwork) return null;
-
-            return (
-              <Link
-                className="collection-index__item"
-                key={department.name}
-                to="/explore"
-                search={{ department: department.name, path: undefined }}
-              >
-                <ArtworkImage artwork={artwork} />
-                <div className="collection-index__meta">
-                  <span className="mono">{count} review works</span>
-                  <h3>{department.name}</h3>
-                  <p>{department.description}</p>
-                  <span className="link-action">
-                    Open department <span aria-hidden="true">→</span>
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
+          {reviewDepartments.map((department) => (
+            <ReviewDepartmentCard department={department} key={department.id} />
+          ))}
         </div>
         <div className="home-gallery__footer">
           <span className="mono">The rest of the museum rooms</span>
