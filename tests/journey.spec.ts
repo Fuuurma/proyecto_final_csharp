@@ -48,12 +48,12 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
     page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
   ).toBeVisible();
 
-  // The persisted payload is the versioned envelope, and a reload
+  // The persisted payload is the mergeable versioned document, and a reload
   // rehydrates the saved state from it.
   const stored = await page.evaluate(() =>
     window.localStorage.getItem("meet-the-met.selection"),
   );
-  expect(JSON.parse(stored ?? "null")).toMatchObject({ version: 1 });
+  expect(JSON.parse(stored ?? "null")).toMatchObject({ version: 2 });
   await page.reload();
   await expect(
     page.getByRole("button", { name: /Remove Wheat Field with Cypresses/ }),
@@ -77,6 +77,51 @@ test("Home → Explore → detail → Save → Selection", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { name: "Keep works" }).click();
   await expect(page.getByRole("alertdialog")).toBeHidden();
+});
+
+test("selection edits synchronize across open tabs", async ({
+  page,
+  context,
+}) => {
+  const otherTab = await context.newPage();
+  await Promise.all([page.goto("/art/436535"), otherTab.goto("/art/436524")]);
+
+  const saveWheat = page.getByRole("button", {
+    name: /Save Wheat Field with Cypresses/,
+  });
+  const saveSunflowers = otherTab.getByRole("button", {
+    name: /Save Sunflowers/,
+  });
+  await expect(saveWheat).toBeEnabled();
+  await expect(saveSunflowers).toBeEnabled();
+
+  await saveWheat.click();
+  await expect(
+    otherTab.getByRole("button", {
+      name: /Remove Wheat Field with Cypresses from your selection/,
+    }),
+  ).toBeVisible();
+
+  await saveSunflowers.click();
+  await expect(
+    page.getByRole("button", {
+      name: /Remove Sunflowers from your selection/,
+    }),
+  ).toBeVisible();
+
+  await selectionNav(page).click();
+  await expect(page).toHaveURL(/\/selection$/);
+  await expect(page.locator(".selection-row__meta")).toHaveCount(2);
+  await expect(
+    page.locator(".selection-row__meta").getByRole("heading", {
+      name: "Wheat Field with Cypresses",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".selection-row__meta").getByRole("heading", {
+      name: "Sunflowers",
+    }),
+  ).toBeVisible();
 });
 
 test("Detail Previous/Next follow the browsed Explore order", async ({
