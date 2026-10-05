@@ -90,6 +90,22 @@ describe("getRelatedArtworks", () => {
     ]);
   });
 
+  it("labels from the returned slice, not the pool sizes (needs-work 10-01 P3)", () => {
+    // One same-maker work + three same-department fillers: the old
+    // pool-based label said "Same maker" while 3 of 4 visible works
+    // were by other artists.
+    const related = getRelatedArtworks(wheat, [
+      wheat,
+      sunflowers,
+      landscape,
+      portrait,
+      stillLife,
+    ]);
+
+    expect(related.artworks.map((artwork) => artwork.id)).toEqual([2, 4, 6, 7]);
+    expect(related.label).toBe("Same department");
+  });
+
   it("caps the related room so the detail page stays bounded", () => {
     const catalog = [
       wheat,

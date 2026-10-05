@@ -1,8 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArtworkImage } from "@/components/artwork-image";
+import { ReviewDepartmentCard } from "@/components/review-department-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { curatedArtworks } from "@/data/curated-artworks";
 import {
   exploreSearchForDepartment,
   reviewDepartments,
@@ -10,6 +9,9 @@ import {
 import { listDepartments } from "@/lib/met/server-functions";
 
 export const Route = createFileRoute("/departments")({
+  // Loader before head — tanstack-start-route-property-order (react-doctor
+  // 09-16): data properties first keep head's inference anchored.
+  loader: () => listDepartments(),
   head: () => ({
     meta: [
       { title: "Departments — Meet the Met" },
@@ -25,7 +27,6 @@ export const Route = createFileRoute("/departments")({
       },
     ],
   }),
-  loader: () => listDepartments(),
   component: Departments,
 });
 
@@ -75,39 +76,9 @@ function Departments() {
           </p>
         </div>
         <div className="collection-index__list">
-          {reviewDepartments.map((department) => {
-            const artwork = curatedArtworks.find(
-              (candidate) => candidate.id === department.artworkId,
-            );
-            const count = curatedArtworks.filter(
-              (candidate) => candidate.department === department.name,
-            ).length;
-
-            if (!artwork) return null;
-
-            return (
-              <Link
-                className="collection-index__item"
-                key={department.id}
-                to="/explore"
-                search={{
-                  department: department.name,
-                  path: undefined,
-                  departmentId: undefined,
-                }}
-              >
-                <ArtworkImage artwork={artwork} />
-                <div className="collection-index__meta">
-                  <span className="mono">{count} review works</span>
-                  <h3>{department.name}</h3>
-                  <p>{department.description}</p>
-                  <span className="text-link">
-                    Open department <span aria-hidden="true">→</span>
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
+          {reviewDepartments.map((department) => (
+            <ReviewDepartmentCard department={department} key={department.id} />
+          ))}
         </div>
       </section>
 
@@ -163,7 +134,7 @@ function Departments() {
                     path: undefined,
                     q: undefined,
                   }}
-                  className="text-link"
+                  className="link-action"
                 >
                   Open in Explore <span aria-hidden="true">→</span>
                 </Link>

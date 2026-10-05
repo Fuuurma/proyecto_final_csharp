@@ -18,7 +18,7 @@ export type Artwork = {
   primaryImageSmall: string | null;
   additionalImages: string[];
   imageAspectRatio: number;
-  isPublicDomain: boolean;
+  isPublicDomain: boolean | null;
   rights: string | null;
   creditLine: string | null;
   canonicalUrl: string;
@@ -41,7 +41,8 @@ function getImageAspectRatio(payload: MetObjectPayload): number {
     return 1;
   }
 
-  return width / height;
+  const ratio = width / height;
+  return Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
 }
 
 function getArtist(payload: MetObjectPayload): string | null {
@@ -78,7 +79,7 @@ export function normalizeMetPayload(payload: MetObjectPayload): Artwork {
     primaryImageSmall: clean(payload.primaryImageSmall),
     additionalImages: (payload.additionalImages ?? []).filter(Boolean),
     imageAspectRatio: getImageAspectRatio(payload),
-    isPublicDomain: payload.isPublicDomain ?? false,
+    isPublicDomain: payload.isPublicDomain ?? null,
     rights: clean(payload.rightsAndReproduction),
     creditLine: clean(payload.creditLine),
     canonicalUrl:

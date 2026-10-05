@@ -5,27 +5,46 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
 } from "react";
 import type { Artwork } from "./met/normalize";
 
-const STORAGE_KEY = "meet-the-met.selection";
+import {
+  applySelectionIntent,
+  createWriterId,
+  emptySelectionDocument,
+  itemListsEqual,
+  localStorageOrNull,
+  mergeSelectionDocuments,
+  parseSelectionDocument,
+  readStoredDocument,
+  type SelectionDocument,
+  type SelectionIntent,
+  type SelectionItem,
+  STORAGE_KEY,
+  type StoredSelectionRead,
+  selectionAspectRatio,
+  selectionDocumentItems,
+  writeSelectionDocument,
+} from "./selection-storage";
 
-export type SelectionItem = Pick<
-  Artwork,
-  | "id"
-  | "displayTitle"
-  | "artist"
-  | "date"
-  | "primaryImage"
-  | "primaryImageSmall"
-  | "imageAspectRatio"
->;
+export * from "./selection-storage";
 
 type SelectionContextValue = {
   items: SelectionItem[];
   isHydrated: boolean;
   announcement: string;
+  /**
+   * Why a save cannot persist, or null when writes land normally.
+   * "unsupported-version": a newer build's envelope owns the storage
+   * key — writes are refused so the foreign payload survives.
+   * "unavailable": the store itself refuses (private mode, quota, a
+   * throwing accessor) — saves die the same silent death, so it must
+   * be disclosed distinctly, not coerced to unblocked (review 09-19
+   * P1; review 09-19 18:17 P2).
+   */
+  persistenceBlocked: "unsupported-version" | "unavailable" | null;
   has: (objectId: number) => boolean;
   toggle: (artwork: Artwork) => void;
   remove: (objectId: number) => void;
@@ -73,12 +92,9 @@ export function artworkFromSelectionItem(item: SelectionItem): Artwork {
     primaryImage: item.primaryImage ?? item.primaryImageSmall,
     primaryImageSmall: item.primaryImageSmall,
     additionalImages: [],
-    imageAspectRatio:
-      typeof item.imageAspectRatio === "number" && item.imageAspectRatio > 0
-        ? item.imageAspectRatio
-        : 1,
-    isPublicDomain: true,
-    rights: null,
+    imageAspectRatio: selectionAspectRatio(item.imageAspectRatio),
+    isPublicDomain: item.isPublicDomain,
+    rights: item.rights,
     creditLine: null,
     canonicalUrl: `https://www.metmuseum.org/art/collection/search/${item.id}`,
     tags: [],
@@ -94,24 +110,9 @@ export function selectionItemFromArtwork(artwork: Artwork): SelectionItem {
     primaryImage: artwork.primaryImage,
     primaryImageSmall: artwork.primaryImageSmall,
     imageAspectRatio: artwork.imageAspectRatio,
+    isPublicDomain: artwork.isPublicDomain,
+    rights: artwork.rights,
   };
-}
-
-function isSelectionItem(value: unknown): value is SelectionItem {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<SelectionItem>;
-  return typeof item.id === "number" && typeof item.displayTitle === "string";
-}
-
-function readSelection(): SelectionItem[] {
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) return [];
-    const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed.filter(isSelectionItem) : [];
-  } catch {
-    return [];
-  }
 }
 
 /**
@@ -125,6 +126,7 @@ export type SelectionState = { items: SelectionItem[]; announcement: string };
 
 export type SelectionAction =
   | { type: "hydrate"; items: SelectionItem[] }
+  | { type: "replace"; items: SelectionItem[]; announcement?: string }
   | { type: "toggle"; artwork: Artwork }
   | { type: "remove"; objectId: number }
   | { type: "move"; objectId: number; direction: -1 | 1 }
@@ -140,8 +142,22 @@ export function selectionReducer(
   action: SelectionAction,
 ): SelectionState {
   switch (action.type) {
-    case "hydrate":
-      return state.items.length > 0 ? state : { ...state, items: action.items };
+    case "replace":
+      return {
+        ...state,
+        items: action.items,
+        announcement: action.announcement ?? state.announcement,
+      };
+    case "hydrate": {
+      if (state.items.length === 0) return { ...state, items: action.items };
+      // Pre-hydration edits landed — merge instead of dropping either
+      // side (needs-work 09-15 00:01 P3: the old guard discarded the
+      // stored payload wholesale once any item existed). Stored
+      // uniques keep their order behind the live edits.
+      const existing = new Set(state.items.map((i) => i.id));
+      const storedNew = action.items.filter((i) => !existing.has(i.id));
+      return { ...state, items: [...state.items, ...storedNew] };
+    }
     case "toggle": {
       const alreadySaved = state.items.some(
         (item) => item.id === action.artwork.id,
@@ -192,24 +208,229 @@ export function selectionReducer(
   }
 }
 
+// Documents are only ever replaced, never mutated in place — so the
+// ref's initial value can be a module constant instead of a factory
+// call re-evaluated on every render (react-doctor
+// rerender-lazy-ref-init). Same sharing as emptySelectionState above.
+const INITIAL_SELECTION_DOCUMENT = emptySelectionDocument();
+
 export function SelectionProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(selectionReducer, emptySelectionState);
   const { items, announcement } = state;
+  const stateRef = useRef(state);
+  const documentRef = useRef<SelectionDocument>(INITIAL_SELECTION_DOCUMENT);
+  const writerRef = useRef("");
+  const pendingIntentsRef = useRef<SelectionIntent[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [persistenceBlocked, setPersistenceBlocked] =
+    useState<SelectionContextValue["persistenceBlocked"]>(null);
 
   useEffect(() => {
-    dispatch({ type: "hydrate", items: readSelection() });
+    writerRef.current ||= createWriterId();
+    const announceExternalItems = (document: SelectionDocument) => {
+      const nextItems = selectionDocumentItems(document);
+      if (itemListsEqual(stateRef.current.items, nextItems)) return;
+      const action: SelectionAction = {
+        type: "replace",
+        items: nextItems,
+        announcement: "Selection updated from another tab",
+      };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY && event.key !== null) return;
+      const storage = localStorageOrNull();
+      if (
+        storage &&
+        event.storageArea &&
+        event.storageArea !== window.localStorage
+      ) {
+        return;
+      }
+
+      const eventValue = parseSelectionDocument(event.newValue);
+      let next = documentRef.current;
+      let stored: StoredSelectionRead | null = null;
+      if (storage) {
+        try {
+          stored = readStoredDocument(storage);
+        } catch {
+          setPersistenceBlocked("unavailable");
+        }
+      } else {
+        setPersistenceBlocked("unavailable");
+      }
+
+      if (stored?.status === "unsupported-version") {
+        setPersistenceBlocked("unsupported-version");
+        return;
+      }
+      if (eventValue.status === "unsupported-version" && !stored) {
+        setPersistenceBlocked("unsupported-version");
+        return;
+      }
+
+      // A queued storage event can arrive after a newer write. Read the
+      // current key and treat a still-missing key as the winning clear, so
+      // delayed old values cannot resurrect a removed selection.
+      if (
+        stored?.status === "ok" &&
+        stored.raw === null &&
+        event.newValue !== null
+      ) {
+        next = applySelectionIntent(next, { type: "clear" }, writerRef.current);
+      } else {
+        if (eventValue.status === "ok") {
+          next = mergeSelectionDocuments(next, eventValue.document);
+        }
+        if (stored?.status === "ok") {
+          next = mergeSelectionDocuments(next, stored.document);
+        }
+        if (
+          event.newValue === null &&
+          (!stored || (stored.status === "ok" && stored.raw === null))
+        ) {
+          next = applySelectionIntent(
+            next,
+            { type: "clear" },
+            writerRef.current,
+          );
+        }
+      }
+
+      documentRef.current = next;
+      if (storage && stored?.status === "ok") {
+        const result = writeSelectionDocument(storage, next, stored.raw);
+        setPersistenceBlocked(
+          result.status === "blocked" ? result.reason : null,
+        );
+      }
+      announceExternalItems(next);
+    };
+
+    window.addEventListener("storage", handleStorage);
+    const storage = localStorageOrNull();
+    if (!storage) {
+      // The accessor itself is blocked — every save is a no-op from the
+      // first render, so the unavailable state must be disclosed at
+      // mount, not after the first doomed write (review 09-19 18:17 P2).
+      setPersistenceBlocked("unavailable");
+      const action: SelectionAction = { type: "hydrate", items: [] };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+      setIsHydrated(true);
+      return () => window.removeEventListener("storage", handleStorage);
+    }
+    let stored: StoredSelectionRead;
+    try {
+      stored = readStoredDocument(storage);
+    } catch {
+      setPersistenceBlocked("unavailable");
+      const action: SelectionAction = { type: "hydrate", items: [] };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+      setIsHydrated(true);
+      return () => window.removeEventListener("storage", handleStorage);
+    }
+    if (stored.status === "unsupported-version") {
+      setPersistenceBlocked("unsupported-version");
+      const action: SelectionAction = { type: "hydrate", items: [] };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+    } else {
+      documentRef.current = stored.document;
+      const action: SelectionAction = {
+        type: "hydrate",
+        items: selectionDocumentItems(stored.document),
+      };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
+      if (stored.needsUpgrade) {
+        try {
+          const latest = readStoredDocument(storage);
+          if (latest.status === "unsupported-version") {
+            setPersistenceBlocked("unsupported-version");
+          } else {
+            const merged = mergeSelectionDocuments(
+              documentRef.current,
+              latest.document,
+            );
+            documentRef.current = merged;
+            const result = writeSelectionDocument(storage, merged, latest.raw);
+            setPersistenceBlocked(
+              result.status === "blocked" ? result.reason : null,
+            );
+          }
+        } catch {
+          setPersistenceBlocked("unavailable");
+        }
+      }
+    }
     setIsHydrated(true);
+    return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
   useEffect(() => {
     if (!isHydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch {
-      // Private mode / quota-exceeded: the in-memory tray keeps working,
-      // persistence just degrades for this visit. Mirrors readSelection's
-      // guard (devin 09-09 14:17 #4 — the write was the unguarded half).
+    const intents = pendingIntentsRef.current.splice(0);
+    if (intents.length === 0) return;
+    const storage = localStorageOrNull();
+    let next = documentRef.current;
+    if (storage) {
+      try {
+        const stored = readStoredDocument(storage);
+        if (stored.status === "ok") {
+          next = mergeSelectionDocuments(next, stored.document);
+          for (const intent of intents) {
+            next = applySelectionIntent(next, intent, writerRef.current);
+          }
+          documentRef.current = next;
+          const result = writeSelectionDocument(storage, next, stored.raw);
+          setPersistenceBlocked(
+            result.status === "blocked" ? result.reason : null,
+          );
+          if (result.status === "persisted") {
+            pendingIntentsRef.current = [];
+          }
+        } else {
+          for (const intent of intents) {
+            next = applySelectionIntent(next, intent, writerRef.current);
+          }
+          documentRef.current = next;
+          setPersistenceBlocked("unsupported-version");
+          console.warn(
+            `[selection] stored payload has version ${stored.version}, which this build cannot read; keeping it on disk and skipping this write`,
+          );
+        }
+      } catch {
+        for (const intent of intents) {
+          next = applySelectionIntent(next, intent, writerRef.current);
+        }
+        documentRef.current = next;
+        setPersistenceBlocked("unavailable");
+      }
+    } else {
+      for (const intent of intents) {
+        next = applySelectionIntent(next, intent, writerRef.current);
+      }
+      documentRef.current = next;
+      setPersistenceBlocked("unavailable");
+    }
+
+    const reconciledItems = selectionDocumentItems(next);
+    if (
+      !itemListsEqual(items, reconciledItems) ||
+      !itemListsEqual(stateRef.current.items, reconciledItems)
+    ) {
+      const action: SelectionAction = {
+        type: "replace",
+        items: reconciledItems,
+        announcement: stateRef.current.announcement,
+      };
+      stateRef.current = selectionReducer(stateRef.current, action);
+      dispatch(action);
     }
   }, [isHydrated, items]);
 
@@ -218,34 +439,77 @@ export function SelectionProvider({ children }: { children: React.ReactNode }) {
     [items],
   );
 
-  const toggle = useCallback((artwork: Artwork) => {
-    dispatch({ type: "toggle", artwork });
-  }, []);
+  const dispatchLocal = useCallback(
+    (action: SelectionAction, intent: SelectionIntent) => {
+      const previous = stateRef.current;
+      const next = selectionReducer(previous, action);
+      if (next.items !== previous.items) pendingIntentsRef.current.push(intent);
+      stateRef.current = next;
+      dispatch(action);
+    },
+    [],
+  );
 
-  const remove = useCallback((objectId: number) => {
-    dispatch({ type: "remove", objectId });
-  }, []);
+  const toggle = useCallback(
+    (artwork: Artwork) => {
+      const saved = stateRef.current.items.some(
+        (item) => item.id === artwork.id,
+      );
+      const item = selectionItemFromArtwork(artwork);
+      dispatchLocal(
+        { type: "toggle", artwork },
+        saved
+          ? { type: "remove", objectId: artwork.id }
+          : { type: "add", item },
+      );
+    },
+    [dispatchLocal],
+  );
 
-  const move = useCallback((objectId: number, direction: -1 | 1) => {
-    dispatch({ type: "move", objectId, direction });
-  }, []);
+  const remove = useCallback(
+    (objectId: number) => {
+      dispatchLocal({ type: "remove", objectId }, { type: "remove", objectId });
+    },
+    [dispatchLocal],
+  );
+
+  const move = useCallback(
+    (objectId: number, direction: -1 | 1) => {
+      dispatchLocal(
+        { type: "move", objectId, direction },
+        { type: "move", objectId, direction },
+      );
+    },
+    [dispatchLocal],
+  );
 
   const clear = useCallback(() => {
-    dispatch({ type: "clear" });
-  }, []);
+    dispatchLocal({ type: "clear" }, { type: "clear" });
+  }, [dispatchLocal]);
 
   const value = useMemo(
     () => ({
       items,
       isHydrated,
       announcement,
+      persistenceBlocked,
       has,
       toggle,
       remove,
       move,
       clear,
     }),
-    [announcement, clear, has, isHydrated, items, move, remove, toggle],
+    [
+      announcement,
+      clear,
+      has,
+      isHydrated,
+      items,
+      move,
+      persistenceBlocked,
+      remove,
+      toggle,
+    ],
   );
 
   return (

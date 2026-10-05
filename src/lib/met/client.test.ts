@@ -1,11 +1,14 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearMetCache } from "./cache";
+import { clearMetCache, getCached, setCached } from "./cache";
 import {
   fetchMetDepartments,
   fetchMetObject,
   fetchMetObjects,
   fetchMetSearchIds,
   MAX_CACHED_SEARCH_IDS,
+  resetMetCircuitBreaker,
   SEARCH_PAGE_SIZE,
   sliceSearchPage,
 } from "./client.server";
@@ -30,6 +33,7 @@ function objectPayload(objectID: number) {
 describe("Met API adapter", () => {
   afterEach(() => {
     clearMetCache();
+    resetMetCircuitBreaker();
   });
 
   it("limits search IDs and requests public-domain image-backed results", async () => {
@@ -46,6 +50,28 @@ describe("Met API adapter", () => {
     await expect(
       fetchMetSearchIds("paintings", { fetcher, limit: 3 }),
     ).resolves.toEqual({ total: 30, objectIds: [1, 2, 3], preFiltered: true });
+  });
+
+  it("dedupes ids when the live index shifts between v1.1 pages", async () => {
+    // Pagination reads a live index: results added/removed between page
+    // fetches re-position entries, so a later page may repeat an id an
+    // earlier page returned. The merged list must not carry duplicates.
+    const pageOne = Array.from({ length: 500 }, (_, i) => i + 1); // full page
+    const pages = [
+      { total: 501, objectIDs: pageOne },
+      { total: 501, objectIDs: [500, 501] }, // 500 repeats: index shifted
+      { total: 501, objectIDs: [] },
+    ];
+    let served = 0;
+    const fetcher: typeof fetch = async () => response(pages[served++]);
+
+    // no caller `limit`: the full merged list is asserted, so a duplicate
+    // (502 entries) is distinguishable from the deduped result (501).
+    await expect(fetchMetSearchIds("shifting", { fetcher })).resolves.toEqual({
+      total: 501,
+      objectIds: [...pageOne, 501],
+      preFiltered: true,
+    });
   });
 
   it("treats a null objectIDs list as an empty search", async () => {
@@ -175,12 +201,339 @@ describe("Met API adapter", () => {
   });
 });
 
+// Jittered retry (fleet BE-meet-the-met-01): idempotent GETs retry at
+// most twice, and only on transient failures — 4xx and parse are
+// deterministic, an open circuit fails fast.
+describe("Met API retry", () => {
+  const noopSleep = async () => {};
+
+  afterEach(() => {
+    clearMetCache();
+    resetMetCircuitBreaker();
+  });
+
+  it("retries a transient 5xx with backoff, then succeeds", async () => {
+    const sleep = vi.fn(async (_ms: number) => {});
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return calls < 3
+        ? response({ message: "overloaded" }, 503)
+        : response(objectPayload(7));
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep, random: () => 0.5 } }),
+    ).resolves.toMatchObject({ id: 7 });
+    expect(calls).toBe(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+    // Full jitter, attempt 0: delay < base (150ms) for any prng < 1.
+    expect(sleep.mock.calls[0]?.[0]).toBeLessThan(150);
+  });
+
+  it("gives up after two retries on persistent 5xx", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return response({ message: "overloaded" }, 503);
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep: noopSleep } }),
+    ).rejects.toMatchObject({ kind: "5xx", status: 503 });
+    expect(calls).toBe(3);
+  });
+
+  it("does not retry a 4xx rejection", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return response({ message: "bad request" }, 400);
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep: noopSleep } }),
+    ).rejects.toMatchObject({ kind: "4xx", status: 400 });
+    expect(calls).toBe(1);
+  });
+
+  it("does not retry an unparseable body", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return new Response("not json", { status: 200 });
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep: noopSleep } }),
+    ).rejects.toMatchObject({ kind: "parse" });
+    expect(calls).toBe(1);
+  });
+});
+
+// Prevents Met 429s from bypassing retries/stale service or returning stale
+// data indefinitely.
+describe("Met API rate limiting", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    clearMetCache();
+    resetMetCircuitBreaker();
+  });
+
+  it("honors a bounded Retry-After before retrying a 429", async () => {
+    let calls = 0;
+    const sleep = vi.fn(async (_ms: number) => {});
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("rate limited", {
+            status: 429,
+            headers: { "Retry-After": "1" },
+          })
+        : response(objectPayload(7));
+    };
+
+    await expect(
+      fetchMetObject(7, { fetcher, retry: { sleep, random: () => 0.5 } }),
+    ).resolves.toMatchObject({ id: 7 });
+    expect(calls).toBe(2);
+    expect(sleep).toHaveBeenCalledWith(1_000);
+  });
+
+  it("honors an HTTP-date Retry-After within the retry budget", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-05T00:00:00.000Z"));
+    let calls = 0;
+    const sleep = vi.fn(async (_ms: number) => {});
+    const retryAt = new Date(Date.now() + 1_000).toUTCString();
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("rate limited", {
+            status: 429,
+            headers: { "Retry-After": retryAt },
+          })
+        : response(objectPayload(71));
+    };
+
+    await expect(
+      fetchMetObject(71, { fetcher, retry: { sleep, random: () => 0.5 } }),
+    ).resolves.toMatchObject({ id: 71 });
+    expect(calls).toBe(2);
+    expect(sleep).toHaveBeenCalledWith(1_000);
+  });
+
+  it("uses bounded jitter when Retry-After is missing", async () => {
+    let calls = 0;
+    const sleep = vi.fn(async (_ms: number) => {});
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("rate limited", { status: 429 })
+        : response(objectPayload(8));
+    };
+
+    await expect(
+      fetchMetObject(8, { fetcher, retry: { sleep, random: () => 0.5 } }),
+    ).resolves.toMatchObject({ id: 8 });
+    expect(calls).toBe(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep.mock.calls[0]?.[0]).toBeLessThan(150);
+  });
+
+  it("surfaces an exhausted 429 as rate limiting even with malformed JSON", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      return new Response("{ not json", { status: 429 });
+    };
+
+    await expect(
+      fetchMetObject(9, { fetcher, retry: { sleep: async () => {} } }),
+    ).rejects.toMatchObject({ kind: "rate-limit", status: 429 });
+    expect(calls).toBe(3);
+  });
+
+  it("uses recent cached search data instead of retrying beyond Retry-After", async () => {
+    vi.useFakeTimers();
+    const query = "rate-limit-stale";
+    const url = new URL(
+      "https://collectionapi.metmuseum.org/public/collection/v1.1/search",
+    );
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("q", query);
+    url.searchParams.set("hasImages", "true");
+    url.searchParams.set("isPublicDomain", "true");
+    const stale = { total: 1, objectIds: [42], preFiltered: true };
+    setCached(url.toString(), stale, 60_000);
+    vi.advanceTimersByTime(60_001);
+
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      return new Response("rate limited", {
+        status: 429,
+        headers: { "Retry-After": "120" },
+      });
+    }) as typeof fetch);
+
+    await expect(fetchMetSearchIds(query)).resolves.toEqual(stale);
+    expect(calls).toBe(1);
+  });
+
+  it("serves cached search data after exhausting 429 retries", async () => {
+    vi.useFakeTimers();
+    const query = "rate-limit-retry-stale";
+    const url = new URL(
+      "https://collectionapi.metmuseum.org/public/collection/v1.1/search",
+    );
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("q", query);
+    url.searchParams.set("hasImages", "true");
+    url.searchParams.set("isPublicDomain", "true");
+    const stale = { total: 1, objectIds: [43], preFiltered: true };
+    setCached(url.toString(), stale, 60_000);
+    vi.advanceTimersByTime(60_001);
+
+    let calls = 0;
+    const sleep = vi.fn(async (_ms: number) => {});
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      return new Response("rate limited", { status: 429 });
+    }) as typeof fetch);
+
+    await expect(
+      fetchMetSearchIds(query, { retry: { sleep, random: () => 0 } }),
+    ).resolves.toEqual(stale);
+    expect(calls).toBe(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not serve cached search data beyond the stale grace period", async () => {
+    vi.useFakeTimers();
+    const query = "expired-rate-limit-stale";
+    const url = new URL(
+      "https://collectionapi.metmuseum.org/public/collection/v1.1/search",
+    );
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("q", query);
+    url.searchParams.set("hasImages", "true");
+    url.searchParams.set("isPublicDomain", "true");
+    setCached(
+      url.toString(),
+      { total: 1, objectIds: [42], preFiltered: true },
+      60_000,
+    );
+    vi.advanceTimersByTime(11 * 60_000 + 1);
+
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      return new Response("rate limited", {
+        status: 429,
+        headers: { "Retry-After": "120" },
+      });
+    }) as typeof fetch);
+
+    await expect(fetchMetSearchIds(query)).rejects.toMatchObject({
+      kind: "rate-limit",
+      status: 429,
+    });
+    expect(calls).toBe(1);
+  });
+});
+
+describe("Met API circuit breaker", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    clearMetCache();
+    resetMetCircuitBreaker();
+  });
+
+  it("opens after three failures and blocks another network request", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      throw new Error("upstream down");
+    };
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(fetchMetDepartments({ fetcher })).rejects.toMatchObject({
+        kind: "5xx",
+      });
+    }
+    await expect(fetchMetDepartments({ fetcher })).rejects.toMatchObject({
+      kind: "5xx",
+    });
+    // The first call alone exhausts its three retry attempts and trips
+    // the breaker; the next three fail fast on the open circuit.
+    expect(calls).toBe(3);
+  });
+
+  it("serves a stale department response while open", async () => {
+    vi.useFakeTimers();
+    const url =
+      "https://collectionapi.metmuseum.org/public/collection/v1/departments";
+    const stale = [{ id: 6, name: "Asian Art" }];
+    setCached(url, stale, 1);
+    vi.advanceTimersByTime(2);
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      throw new Error("upstream down");
+    }) as typeof fetch);
+    // Fake timers are active — a real backoff sleep would never resolve.
+    const retry = { sleep: async () => {} };
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(fetchMetDepartments({ retry })).resolves.toEqual(stale);
+    }
+    await expect(fetchMetDepartments({ retry })).resolves.toEqual(stale);
+    expect(calls).toBe(3);
+    expect(getCached(url)).toBeUndefined();
+  });
+
+  it("closes after a successful half-open probe", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      if (calls <= 3) throw new Error("upstream down");
+      return response({
+        departments: [{ departmentId: 6, displayName: "Asian Art" }],
+      });
+    };
+
+    const retry = { sleep: async () => {} };
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        fetchMetDepartments({ fetcher, retry }),
+      ).rejects.toMatchObject({
+        kind: "5xx",
+      });
+    }
+    vi.advanceTimersByTime(30_000);
+    await expect(fetchMetDepartments({ fetcher, retry })).resolves.toEqual([
+      { id: 6, name: "Asian Art" },
+    ]);
+    await expect(fetchMetDepartments({ fetcher, retry })).resolves.toEqual([
+      { id: 6, name: "Asian Art" },
+    ]);
+    expect(calls).toBe(5);
+  });
+});
+
 // The ID-list cache must refuse oversize listings (devin 09-10 12:50 P1):
 // MAX_ENTRIES bounds keys, not weight — an unbounded value lets one
 // whole-department or q=* listing dominate the Worker isolate.
 describe("fetchMetSearchIds cache value bound", () => {
   afterEach(() => {
     clearMetCache();
+    // the stale-tier test trips timeouts — without this reset the open
+    // breaker fail-fasts every later test in the file
+    resetMetCircuitBreaker();
     vi.unstubAllGlobals();
   });
 
@@ -219,6 +572,35 @@ describe("fetchMetSearchIds cache value bound", () => {
     expect(calls()).toBe(2);
   });
 
+  // needs-work 09-26 P2: over-bound listings skipped the cache entirely,
+  // so whole-department browses took the hard error during upstream
+  // timeouts while small searches degraded to stale. One oversized
+  // stale slot (most recent wins) now serves them on timeout/5xx.
+  it("serves the oversized stale tier on timeout after one success", async () => {
+    const ids = Array.from(
+      { length: MAX_CACHED_SEARCH_IDS + 1 },
+      (_, i) => i + 1,
+    );
+    let calls = 0;
+    const fetcher: typeof fetch = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return response({ total: ids.length, objectIDs: ids });
+      }
+      throw new DOMException("aborted", "AbortError");
+    };
+    vi.stubGlobal("fetch", fetcher);
+
+    const first = await fetchMetSearchIds("bound-over-stale");
+    const second = await fetchMetSearchIds("bound-over-stale");
+
+    // the second request retries internally (3 attempts) before the
+    // stale tier serves — the exact attempt count is an implementation
+    // detail; what matters is it stopped hitting upstream and degraded
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(second.objectIds).toEqual(first.objectIds);
+  });
+
   it("serving uncached oversize listings still returns them whole", async () => {
     const ids = Array.from(
       { length: MAX_CACHED_SEARCH_IDS + 1 },
@@ -230,5 +612,74 @@ describe("fetchMetSearchIds cache value bound", () => {
     const result = await fetchMetSearchIds("bound-over-whole");
     expect(result.objectIds).toHaveLength(MAX_CACHED_SEARCH_IDS + 1);
     expect(result.total).toBe(ids.length);
+  });
+});
+
+// Immutable upstream edge cache (fleet DST-meet-the-met-01): concurrent
+// same-key requests share one upstream fetch, and the edge tier keeps
+// serving after the isolate-local map is gone.
+describe("upstream edge cache", () => {
+  afterEach(() => {
+    clearMetCache();
+    vi.unstubAllGlobals();
+  });
+
+  it("dedupes concurrent requests for the same object", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return response(objectPayload(42));
+    }) as typeof fetch);
+
+    const [a, b] = await Promise.all([fetchMetObject(42), fetchMetObject(42)]);
+
+    expect(calls).toBe(1);
+    expect(a.id).toBe(42);
+    expect(b.id).toBe(42);
+  });
+
+  it("serves repeat reads from the edge after the local map is cleared", async () => {
+    const backing = new Map<string, string>();
+    vi.stubGlobal("caches", {
+      default: {
+        match: async (key: string) => {
+          const body = backing.get(key);
+          return body === undefined ? undefined : new Response(body);
+        },
+        put: async (key: string, res: Response) => {
+          backing.set(key, await res.text());
+        },
+      },
+    });
+    let calls = 0;
+    vi.stubGlobal("fetch", (async () => {
+      calls += 1;
+      return response(objectPayload(7));
+    }) as typeof fetch);
+
+    await fetchMetObject(7);
+    clearMetCache(); // simulate a fresh isolate
+    const again = await fetchMetObject(7);
+
+    expect(calls).toBe(1);
+    expect(again.id).toBe(7);
+  });
+});
+
+// needs-work 09-26 P3 (latent): the probe flag was cleared by EVERY
+// wrapped call's finally, not only the probe's — a non-probe call
+// finishing inside a probe's load window would let a second probe
+// through. The finally must be gated on the call actually probing.
+describe("circuit probe flag ownership", () => {
+  it("gates the probeInFlight clear on the probing call", () => {
+    const src = readFileSync(join(__dirname, "client.server.ts"), "utf8");
+    const fn = src.slice(
+      src.indexOf("async function withMetCircuit"),
+      src.indexOf("// Upstream failure taxonomy"),
+    );
+    expect(fn).toContain("const isProbe = circuitOpenedAt !== undefined;");
+    expect(fn).toContain("if (isProbe) probeInFlight = false;");
+    expect(fn).not.toContain("    probeInFlight = false;");
   });
 });

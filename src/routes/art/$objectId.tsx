@@ -4,20 +4,21 @@ import {
   notFound,
   useNavigate,
 } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ArtworkCard } from "@/components/artwork-card";
 import { ArtworkImage } from "@/components/artwork-image";
+import { ArtworkRightsMetadata } from "@/components/artwork-rights-metadata";
+import { DetailSkeleton } from "@/components/detail-skeleton";
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
-  CheckIcon,
   CloseIcon,
   ExpandIcon,
-  ShareIcon,
 } from "@/components/icons";
 import { SaveButton } from "@/components/save-button";
+import { ShareButton } from "@/components/share-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -27,10 +28,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { curatedArtworks } from "@/data/curated-artworks";
 import { isReviewDepartmentName } from "@/data/departments";
+import {
+  adjacentInSequence,
+  type SequenceNeighbors,
+} from "@/lib/browse-sequence";
 import type { Artwork } from "@/lib/met/normalize";
+import { artworkDetailMetaDescription } from "@/lib/met/rights";
 import {
   type ArtworkDetailResult,
   getArtwork,
@@ -42,37 +47,15 @@ import { useCopyToClipboard } from "@/lib/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/art/$objectId")({
-  head: ({ loaderData }: { loaderData?: ArtworkDetailResult }) => {
-    const meta: Array<Record<string, string>> = [
-      { title: "Object unavailable — Meet the Met" },
-      {
-        name: "description",
-        content:
-          "This collection object could not be loaded from the Met Open Access API.",
-      },
-    ];
-
-    if (loaderData && loaderData.status === "success") {
-      const art = loaderData.artwork;
-      const title = `${art.displayTitle}${art.artist ? ` — ${art.artist}` : ""} — Meet the Met`;
-      const description = `${art.displayTitle}${art.artist ? ` by ${art.artist}` : ""}${art.date ? `, ${art.date}` : ""}. ${art.medium ?? "Collection object"} from The Metropolitan Museum of Art Open Access collection.`;
-      const ogImage = art.primaryImage ?? art.primaryImageSmall;
-
-      meta.length = 0;
-      meta.push(
-        { title },
-        { name: "description", content: description },
-        { property: "og:type", content: "article" },
-        { property: "og:title", content: title },
-        { property: "og:description", content: description },
-      );
-      if (ogImage) {
-        meta.push({ property: "og:image", content: ogImage });
-      }
-    }
-
-    return { meta };
-  },
+  // `seq` names the session-stored browse sequence the visitor was paging
+  // through on Explore — Previous/Next resolve inside it (devin 09-09
+  // 06:17 P1).
+  validateSearch: (search: Record<string, unknown>): { seq?: string } => ({
+    seq: typeof search.seq === "string" ? search.seq : undefined,
+  }),
+  // Loader before head — tanstack-start-route-property-order
+  // (react-doctor 09-16): data properties first keep head's
+  // loaderData inference anchored.
   loader: ({ params }) => {
     // Non-numeric or out-of-range slugs (/art/abc, /art/1000000000) are
     // wrong addresses, not validator errors — 404 instead of surfacing
@@ -89,18 +72,92 @@ export const Route = createFileRoute("/art/$objectId")({
     return getArtwork({ data: { objectId } });
   },
   pendingComponent: ArtworkDetailPending,
+  head: ({ loaderData }: { loaderData?: ArtworkDetailResult }) => {
+    const meta: Array<Record<string, string>> = [
+      { title: "Object unavailable — Meet the Met" },
+      {
+        name: "description",
+        content:
+          "This collection object could not be loaded from The Met collection API.",
+      },
+    ];
+
+    if (loaderData && loaderData.status === "success") {
+      const art = loaderData.artwork;
+      const title = `${art.displayTitle}${art.artist ? ` — ${art.artist}` : ""} — Meet the Met`;
+      const description = artworkDetailMetaDescription(art);
+      const ogImage = art.primaryImage ?? art.primaryImageSmall;
+
+      meta.length = 0;
+      meta.push(
+        { title },
+        { name: "description", content: description },
+        { property: "og:type", content: "article" },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { name: "twitter:description", content: description },
+      );
+      if (ogImage) {
+        meta.push({ property: "og:image", content: ogImage });
+      }
+    }
+
+    return { meta };
+  },
   component: ArtworkDetail,
 });
+
+/** The honest no-trail state: no neighbors, no position to claim. */
+const EMPTY_ADJACENT = {
+  previous: null,
+  next: null,
+  position: 0,
+  total: 0,
+};
 
 function ArtworkDetail() {
   const result = Route.useLoaderData();
   const { objectId } = Route.useParams();
+  const { seq } = Route.useSearch();
   const navigate = useNavigate();
+  // grok 23:45 #3: "Open image" must target the view the user has
+  // tabbed into, not always the primary image. (Hooks live above the
+  // early return — react-doctor rules-of-hooks, 09-27 re-sweep.) The
+  // pick is stored with the id of the object it was picked under —
+  // this component survives prev/next param changes while the stage
+  // remounts to the new primary, so a bare string kept offering the
+  // previous object's image (needs-work 10-04 P1).
+  const [openImage, setOpenImage] = useState<{ forId: number; src: string }>();
 
   const artwork = result?.status === "success" ? result.artwork : null;
+
+  // The browsed sequence is client-only (sessionStorage). SSR and the
+  // hydration pass must render the curated fallback or hydration
+  // diverges — so the isClient gate holds until mount, then neighbors
+  // resolve synchronously during render. Client-side prev/next therefore
+  // never paints one frame of the previous object's neighbors before the
+  // effect could catch up (devin 09-09 06:17 P1; review 09-19 P2).
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => setIsClient(true), []);
+  const sequence = useMemo<SequenceNeighbors | null>(
+    () =>
+      isClient && seq && artwork ? adjacentInSequence(seq, artwork.id) : null,
+    [isClient, seq, artwork],
+  );
+
   const adjacent = artwork
-    ? getAdjacentArtworks(artwork)
-    : { previous: null, next: null, position: 0, total: 0 };
+    ? seq
+      ? // A `?seq=` link claims a browsed trail. Before isClient the
+        // store is unreadable, so the nav holds empty — no curated
+        // flash on first paint (review 09-19 P2). And when the lookup
+        // resolves to nothing — evicted, expired with the tab, or
+        // displaced by a colliding identity whose sig no longer
+        // matches — the curated set must not pose as that trail with a
+        // confident `N / 45`; the honest render is the empty nav
+        // (review 09-19 18:17 P2).
+        (sequence ?? EMPTY_ADJACENT)
+      : getAdjacentArtworks(artwork)
+    : EMPTY_ADJACENT;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -124,6 +181,10 @@ function ArtworkDetail() {
           from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.previous.id) },
+          // Conditional like ArtworkCard's — an unconditional
+          // `seq: undefined` risks serializing an empty param (review
+          // 09-19 P3).
+          search: seq ? { seq } : {},
         });
       } else if (event.key === "ArrowRight" && adjacent.next) {
         event.preventDefault();
@@ -131,13 +192,14 @@ function ArtworkDetail() {
           from: "/art/$objectId",
           to: "/art/$objectId",
           params: { objectId: String(adjacent.next.id) },
+          search: seq ? { seq } : {},
         });
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [adjacent.previous, adjacent.next, navigate]);
+  }, [adjacent.previous, adjacent.next, navigate, seq]);
 
   if (!result || result.status === "error" || !artwork) {
     const message =
@@ -166,11 +228,15 @@ function ArtworkDetail() {
       ].filter((source): source is string => Boolean(source)),
     ),
   ];
-
+  // Honor the picked view only while its object is still on screen —
+  // after prev/next navigation the remounted stage shows the new
+  // primary and the stale pick must fall back with it.
+  const openImageSrc =
+    openImage?.forId === artwork.id ? openImage.src : undefined;
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
-        <Link to="/explore" className="text-link">
+        <Link to="/explore" className="link-action">
           <ArrowLeftIcon /> Back to Explore
         </Link>
         <div className="detail-page__topline-meta">
@@ -201,7 +267,7 @@ function ArtworkDetail() {
         className="detail-layout page-frame"
         aria-labelledby="artwork-title"
       >
-        <div className="detail-image-column">
+        <div>
           {/* Remount per object: ArtworkStage holds activeSrc in state —
               without the key, prev/next navigation kept showing the
               previous object's image until a tab was clicked, and a
@@ -211,17 +277,25 @@ function ArtworkDetail() {
             key={objectId}
             artwork={artwork}
             imageSources={imageSources}
+            onActiveSrcChange={(src) =>
+              setOpenImage({ forId: artwork.id, src })
+            }
           />
           <div className="detail-image-footer">
             <p className="image-credit">
-              Image: The Metropolitan Museum of Art, Open Access
+              Image: The Metropolitan Museum of Art
             </p>
             {artwork.primaryImage || artwork.primaryImageSmall ? (
               <a
-                href={artwork.primaryImage ?? artwork.primaryImageSmall ?? "#"}
+                href={
+                  openImageSrc ??
+                  artwork.primaryImage ??
+                  artwork.primaryImageSmall ??
+                  "#"
+                }
                 target="_blank"
                 rel="noreferrer"
-                className="text-link text-link--quiet"
+                className="link-action link-action--quiet"
               >
                 Open image <ArrowUpRightIcon />
               </a>
@@ -290,13 +364,9 @@ function ArtworkDetail() {
               mono
               copyable
             />
-            <MetadataRow
-              label="Rights"
-              value={
-                artwork.isPublicDomain
-                  ? "Public domain"
-                  : "Rights status not stated"
-              }
+            <ArtworkRightsMetadata
+              isPublicDomain={artwork.isPublicDomain}
+              rights={artwork.rights}
             />
           </dl>
 
@@ -336,13 +406,14 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.previous.id) }}
-              className="detail-sequence__link detail-sequence__link--previous"
+              search={seq ? { seq } : {}}
+              className="detail-sequence__link"
             >
               <ArtworkImage artwork={adjacent.previous} />
               <div className="detail-sequence__copy">
                 <span className="mono">Previous object</span>
                 <h2>{adjacent.previous.displayTitle}</h2>
-                <span className="text-link">
+                <span className="link-action">
                   Open record <span aria-hidden="true">←</span>
                 </span>
               </div>
@@ -354,13 +425,14 @@ function ArtworkDetail() {
             <Link
               to="/art/$objectId"
               params={{ objectId: String(adjacent.next.id) }}
+              search={seq ? { seq } : {}}
               className="detail-sequence__link detail-sequence__link--next"
             >
               <ArtworkImage artwork={adjacent.next} />
               <div className="detail-sequence__copy">
                 <span className="mono">Next object</span>
                 <h2>{adjacent.next.displayTitle}</h2>
-                <span className="text-link">
+                <span className="link-action">
                   Open record <span aria-hidden="true">→</span>
                 </span>
               </div>
@@ -412,35 +484,19 @@ function getAdjacentArtworks(artwork: Artwork): {
 }
 
 function ArtworkDetailPending() {
+  // Curated objects already know their image ratio (seed data), so
+  // the loading frame can reserve the real box and skip the layout
+  // jump when the record lands (grok 09-30 skeleton-ratio row).
+  const { objectId } = Route.useParams();
+  const curated = curatedArtworks.find(
+    (candidate) => candidate.id === Number(objectId),
+  );
   return (
     <main className="detail-page">
       <div className="page-frame detail-page__topline">
-        <span className="text-link">Reading object record…</span>
+        <span className="link-action">Reading object record…</span>
       </div>
-      <div className="detail-layout page-frame detail-loading" aria-busy="true">
-        <div className="detail-image-column">
-          <Skeleton className="detail-loading__image" />
-          <Skeleton className="detail-loading__credit" />
-        </div>
-        <div className="detail-loading__copy">
-          <Skeleton className="detail-loading__eyebrow" />
-          <Skeleton className="detail-loading__title" />
-          <Skeleton className="detail-loading__title detail-loading__title--short" />
-          <Skeleton className="detail-loading__artist" />
-          <div className="detail-loading__actions">
-            <Skeleton />
-            <Skeleton />
-          </div>
-          <div className="detail-loading__metadata">
-            {[1, 2, 3, 4, 5].map((row) => (
-              <Skeleton key={row} />
-            ))}
-          </div>
-        </div>
-        <p className="sr-only" role="status" aria-live="polite">
-          Bringing the record and its image into view.
-        </p>
-      </div>
+      <DetailSkeleton imageAspectRatio={curated?.imageAspectRatio} />
     </main>
   );
 }
@@ -448,17 +504,28 @@ function ArtworkDetailPending() {
 function ArtworkStage({
   artwork,
   imageSources,
+  onActiveSrcChange,
 }: {
   artwork: Artwork;
   imageSources: string[];
+  onActiveSrcChange?: (src: string) => void;
 }) {
-  const [activeSrc, setActiveSrc] = useState(imageSources[0] ?? null);
+  const [activeSrc, setActiveSrcState] = useState(imageSources[0] ?? null);
   const [isOpen, setIsOpen] = useState(false);
+  const setActiveSrc = (src: string) => {
+    setActiveSrcState(src);
+    onActiveSrcChange?.(src);
+  };
 
   return (
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <div className="detail-image-field">
+        <div
+          id="artwork-stage-panel"
+          role="tabpanel"
+          aria-label="Selected object view"
+          className="detail-image-field"
+        >
           {activeSrc ? (
             <DialogTrigger
               render={
@@ -525,15 +592,49 @@ function ArtworkStage({
       </Dialog>
 
       {imageSources.length > 1 ? (
-        <div className="artwork-views" role="tablist" aria-label="Object views">
+        <div
+          className="artwork-views"
+          role="tablist"
+          aria-label="Object views"
+          onKeyDown={(event) => {
+            // WAI-ARIA tabs: the roster is a single tab stop with
+            // roving focus; arrows/Home/End move selection (grok
+            // 23:45 #4 — pointer-only tabs collapsed non-pointer
+            // users to the primary image).
+            const current = imageSources.indexOf(activeSrc);
+            let next: number | null = null;
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+              next = (current + 1) % imageSources.length;
+            } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+              next = (current - 1 + imageSources.length) % imageSources.length;
+            } else if (event.key === "Home") {
+              next = 0;
+            } else if (event.key === "End") {
+              next = imageSources.length - 1;
+            }
+            if (next !== null) {
+              event.preventDefault();
+              // The tablist owns these keys — without this the same
+              // keydown kept bubbling to the window-level prev/next
+              // artwork shortcut and navigated off the record
+              // (needs-work 09-27 P1; grok 01:45 #1).
+              event.stopPropagation();
+              setActiveSrc(imageSources[next]);
+              document.getElementById(`view-tab-${next}`)?.focus();
+            }
+          }}
+        >
           {imageSources.map((source, index) => {
             const selected = source === activeSrc;
             return (
               <button
                 key={source}
+                id={`view-tab-${index}`}
                 type="button"
                 role="tab"
                 aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                aria-controls="artwork-stage-panel"
                 aria-label={
                   index === 0 ? "Primary image" : `Additional view ${index}`
                 }
@@ -576,36 +677,6 @@ function ImageLightboxStage({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-function ShareButton({ artwork }: { artwork: Artwork }) {
-  const { copied, copyFailed, copy } = useCopyToClipboard(2200);
-
-  async function handleShare() {
-    const url =
-      typeof window !== "undefined"
-        ? window.location.href
-        : artwork.canonicalUrl;
-    await copy(url);
-  }
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="lg"
-      className="record-link share-button"
-      onClick={handleShare}
-      aria-label={copied ? "Link copied to clipboard" : "Copy object page link"}
-    >
-      <span data-icon="inline-start">
-        {copied ? <CheckIcon /> : <ShareIcon />}
-      </span>
-      <span>
-        {copyFailed ? "Copy failed" : copied ? "Copied link" : "Share"}
-      </span>
-    </Button>
-  );
-}
-
 function ArtworkUnavailable({
   objectId,
   message,
@@ -625,7 +696,7 @@ function ArtworkUnavailable({
     return (
       <main className="detail-page">
         <div className="page-frame detail-page__topline">
-          <Link to="/selection" className="text-link">
+          <Link to="/selection" className="link-action">
             <ArrowLeftIcon /> Back to Selection
           </Link>
           <span className="mono">Object {artwork.id}</span>
@@ -634,7 +705,7 @@ function ArtworkUnavailable({
           className="detail-layout page-frame"
           aria-labelledby="artwork-title"
         >
-          <div className="detail-image-column">
+          <div>
             <div className="detail-image-field">
               <ArtworkImage artwork={artwork} size="large" eager />
             </div>
@@ -669,6 +740,13 @@ function ArtworkUnavailable({
                 Met record <ArrowUpRightIcon />
               </a>
             </div>
+            <dl className="metadata-list">
+              <ArtworkRightsMetadata
+                isPublicDomain={artwork.isPublicDomain}
+                rights={artwork.rights}
+                source="saved-copy"
+              />
+            </dl>
           </div>
         </section>
       </main>
@@ -724,7 +802,9 @@ function MetadataRow({
                 : "Click to copy accession number"
             }
             aria-label={
-              copyFailed ? "Copy failed, try again" : "Copy to clipboard"
+              copyFailed
+                ? `Copy failed, try again — ${value}`
+                : `Copy accession number ${value} to clipboard`
             }
           >
             <span>{value}</span>

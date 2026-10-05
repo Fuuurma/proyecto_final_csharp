@@ -28,7 +28,16 @@ test-results/
 
 # Agent-tool local state (fleet installers)
 .claude/settings.local.json
+.claude/CLAUDE.md
 .cursor/hooks.json
+.mcp.json
+.mimocode/
 .pnpm-store/
 .dev.vars
 .dev.vars.e2e-bak
+
+# repowise index (machine-local codebase intelligence)
+.repowise/
+
+# repowise API keys (local)
+.repowise/.env

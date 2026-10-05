@@ -12,11 +12,23 @@
   --rule: #cfccc3;
   --red: #b3322f;
   --red-deep: #862725;
+  /* Focus rings are keyboard affordances, not accent moments — ink on
+     paper, white inside the dark image field (grok 23:45 #5: the red
+     ring burned the accent's scarcity and sat at 2.9:1 on
+     --image-field). */
+  --focus-ring: var(--ink);
+  --focus-ring-on-dark: var(--white);
   --image-field: #171815;
   --white: #fffefa;
   --serif: "Newsreader Variable", "Newsreader", Georgia, serif;
   --sans: "DM Sans Variable", "DM Sans", Helvetica, Arial, sans-serif;
   --mono: "DM Mono", "SFMono-Regular", Consolas, monospace;
+  /* Header height drives the header inner min-height AND the sticky top
+     offset of .collection-index__intro — which is a sibling of the
+     header, not a descendant, so the token must live on :root for the
+     intro to resolve it. Keep it in sync with the header inner
+     min-heights (grok 09-10 18:45 #3, 10-05 #1). */
+  --header-h: 76px;
   --background: var(--paper);
   --foreground: var(--ink);
   --card: var(--white);
@@ -156,7 +168,7 @@ textarea:focus-visible,
 [data-slot="dialog-trigger"]:focus-visible,
 [data-slot="alert-dialog-trigger"]:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--red);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 4px;
   box-shadow: none;
 }
@@ -217,10 +229,6 @@ img {
 }
 
 .site-header {
-  /* Sticky children (collection-index intro) offset from this token —
-     keep it in sync with the inner min-heights below (grok 09-10
-     18:45 #3: the intro stuck 44px under the header). */
-  --header-h: 76px;
   position: sticky;
   top: 0;
   z-index: 40;
@@ -336,7 +344,7 @@ img {
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
   gap: clamp(2rem, 5vw, 5.5rem);
   align-items: center;
-  min-height: min(780px, calc(100dvh - var(--header-h)));
+  min-height: min(780px, calc(100dvh - 76px));
   padding-block: 1.75rem 3.5rem;
 }
 
@@ -374,7 +382,8 @@ img {
 }
 
 .hero__copy h1 em {
-  color: var(--red);
+  /* Italic serif alone carries the pull-quote — the red spent the
+     controlled accent on editorial emphasis (grok 09-25 23:45 P2). */
   font-style: italic;
   font-weight: 400;
 }
@@ -532,7 +541,7 @@ img {
   line-height: 1.25;
 }
 
-.text-link {
+.link-action {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
@@ -543,11 +552,11 @@ img {
   font-weight: 600;
 }
 
-.text-link:hover {
+.link-action:hover {
   color: var(--red);
 }
 
-.text-link--quiet {
+.link-action--quiet {
   color: var(--archive);
   font-weight: 400;
 }
@@ -683,6 +692,13 @@ img {
 
 .home-gallery__classification {
   text-transform: none;
+}
+
+/* Artist byline in the grotesk voice: DESIGN.md reserves mono for
+   accession numbers, object IDs, and index labels only. */
+.home-gallery__artist {
+  color: var(--archive);
+  font-size: 0.85rem;
 }
 
 .home-gallery__footer {
@@ -845,11 +861,11 @@ img {
   font-size: 12px;
 }
 
-.collection-index__item .text-link {
+.collection-index__item .link-action {
   font-weight: 400;
 }
 
-.collection-index__item:hover .text-link,
+.collection-index__item:hover .link-action,
 .collection-index__item:hover h3 {
   color: var(--red);
 }
@@ -917,7 +933,7 @@ img {
 }
 
 .department-filter-input:focus-visible {
-  outline: 2px solid var(--red);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 4px;
 }
 
@@ -972,7 +988,7 @@ img {
     grid-template-columns: 2.25rem minmax(0, 1fr);
   }
 
-  .department-ledger__item .text-link {
+  .department-ledger__item .link-action {
     grid-column: 2;
   }
 }
@@ -1153,8 +1169,12 @@ img {
   opacity: 1;
 }
 
-/* Archive stillness: artwork images do not zoom on hover — the queued
-   direction was "scale(1.02) → none" (head item, resolved). */
+.artwork-card:hover .artwork-image img,
+.home-gallery__item:hover .artwork-image img,
+.path-card:hover .artwork-image img,
+.collection-index__item:hover .artwork-image img {
+  transform: scale(1.02);
+}
 
 .artwork-image__missing {
   display: flex;
@@ -1199,7 +1219,7 @@ img {
 }
 
 .save-button:hover,
-.save-button.is-saved {
+.save-button[aria-pressed="true"] {
   border-color: var(--red);
   color: var(--red);
 }
@@ -1208,7 +1228,7 @@ img {
   transform: scale(0.97);
 }
 
-.save-button.is-saved {
+.save-button[aria-pressed="true"] {
   background: color-mix(in srgb, var(--red) 10%, transparent);
 }
 
@@ -1379,7 +1399,7 @@ img {
 
 .search-form:focus-within {
   border-color: var(--red);
-  outline: 2px solid var(--red);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 4px;
 }
 
@@ -1417,12 +1437,12 @@ img {
   margin-bottom: 0.25rem;
 }
 
-.department-toggle-group {
+.filter-group [data-slot="toggle-group"] {
   max-width: 100%;
   overflow-x: auto;
 }
 
-.department-toggle-group [data-slot="toggle-group-item"] {
+.filter-group [data-slot="toggle-group-item"] {
   min-height: 32px;
   border-color: var(--rule);
   border-radius: 0;
@@ -1432,16 +1452,14 @@ img {
   font-weight: 400;
 }
 
-.department-toggle-group [data-slot="toggle-group-item"]:hover {
+.filter-group [data-slot="toggle-group-item"]:hover {
   background: var(--paper-deep);
   color: var(--ink);
 }
 
-.department-toggle-group [data-slot="toggle-group-item"][aria-pressed="true"] {
-  /* DESIGN.md:30 — museum red is the one controlled accent for active
-     state / selection feedback; white on #b3322f = 6.15:1 (AA). */
-  border-color: var(--red);
-  background: var(--red);
+.filter-group [data-slot="toggle-group-item"][aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
   color: var(--white);
 }
 
@@ -1619,10 +1637,6 @@ img {
 
 .artwork-grid--loading .artwork-skeleton {
   min-width: 0;
-}
-
-.artwork-skeleton__image {
-  width: 100%;
 }
 
 .artwork-skeleton__line {
@@ -1831,8 +1845,13 @@ img {
 
 .detail-loading__image {
   width: 100%;
-  min-height: 38rem;
-  aspect-ratio: 1 / 1;
+  /* The floor only applies to unknown ratios — the real .artwork-image
+   * box is ratio-exact, so a known ratio must not reserve extra height
+   * (landscape pieces would collapse upward when the record lands). */
+  min-height: var(--artwork-min-height, 38rem);
+  /* Matches .artwork-image's --artwork-ratio when the pending route
+   * knows it; the square default is the unknown-ratio fallback. */
+  aspect-ratio: var(--artwork-ratio, 1 / 1);
 }
 
 .detail-loading__credit {
@@ -1907,9 +1926,8 @@ img {
   border-bottom: 1px solid var(--rule);
 }
 
-.detail-page__topline .text-link {
-  /* Keep the base underline: without it the back-link read as a
-     breadcrumb separator, not a link (grok 09-12 05:45). */
+.detail-page__topline .link-action {
+  border: 0;
   color: var(--archive);
   font-weight: 400;
 }
@@ -1929,6 +1947,9 @@ img {
   min-height: 36rem;
   padding: clamp(1.25rem, 3.5vw, 3rem);
   background: var(--image-field);
+  /* focusable chrome inside the dark field (tab close, dialog
+     triggers) reads the on-dark ring */
+  --focus-ring: var(--focus-ring-on-dark);
 }
 
 .detail-image-trigger {
@@ -1967,15 +1988,6 @@ img {
 .detail-image-trigger:focus-visible .detail-image-hint {
   opacity: 1;
   transform: translateY(0);
-}
-
-/* Touch inputs have no hover — the Inspect affordance stays visible
-   there instead of existing only mid-hover (head item, resolved). */
-@media (hover: none) {
-  .detail-image-hint {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .image-dialog-content {
@@ -2104,7 +2116,7 @@ img {
   gap: 1.5rem;
 }
 
-.detail-image-footer .text-link {
+.detail-image-footer .link-action {
   flex: 0 0 auto;
   color: var(--archive);
   font-weight: 400;
@@ -2289,7 +2301,7 @@ img {
 }
 
 .detail-sequence__link:hover h2,
-.detail-sequence__link:hover .text-link {
+.detail-sequence__link:hover .link-action {
   color: var(--red);
 }
 
@@ -2357,8 +2369,27 @@ img {
 }
 
 .selection-tray {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
   border-top: 1px solid var(--rule);
   background: var(--paper);
+  box-shadow: 0 -1px 0 var(--rule);
+}
+
+/* DESIGN.md:96 — the tray confirms saves WITHOUT blocking: fixed to the
+   viewport bottom (grok 09-17 #1, verified in-flow below the fold at
+   __root.tsx:143). Content gets breathing room via the body padding
+   below; when nothing is selected the component renders null, so :has
+   matches only when the tray exists. */
+body:has(.selection-tray) {
+  padding-bottom: 6rem;
+}
+
+body:has(.selection-tray.is-collapsed) {
+  padding-bottom: 3.5rem;
 }
 
 .selection-tray__inner {
@@ -2382,6 +2413,17 @@ img {
   font-size: 20px;
   font-weight: 400;
   letter-spacing: -0.035em;
+}
+
+/* Persistence-blocked notice (review 09-19 P1): a foreign-version envelope
+   owns the key, so in-session saves are not landing on disk — the tray
+   discloses it rather than letting the count look "saved". */
+.selection-tray__warning {
+  margin: 0.15rem 0 0;
+  max-width: 16rem;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--destructive);
 }
 
 .selection-tray__thumbs {
@@ -2440,7 +2482,14 @@ img {
   transform: rotate(-90deg);
 }
 
-.selection-tray.is-collapsed .selection-tray__thumbs,
+.selection-tray.is-collapsed .selection-tray__thumbs {
+  /* Collapsed means collapsed: the thumbs row is what holds the tray
+     tall, and the 3.5rem body clearance assumes the shrink actually
+     happens (grok 09-26 23:45 #1; the 09-17 clearance fix assumed it
+     too). The count strong stays visible below. */
+  display: none;
+}
+
 .selection-tray.is-collapsed .selection-tray__copy strong {
   /* Keep the count visible when collapsed — hiding it left the tray
      with only a chevron and no indication anything is saved (grok
@@ -2538,7 +2587,9 @@ img {
   border: 1px solid var(--ink);
   border-radius: 0;
   background: var(--paper);
-  box-shadow: 0.75rem 0.75rem 0 var(--red);
+  /* paper-deep depth echo — the accent is for active/selection, not
+     decoration around a confirm (grok 23:45 #7) */
+  box-shadow: 0.75rem 0.75rem 0 var(--ink);
 }
 
 [data-slot="alert-dialog-title"] {
@@ -2559,20 +2610,20 @@ img {
   background: var(--paper-deep);
 }
 
-.text-button,
+.button-quiet,
 .icon-button {
   border: 0;
   background: transparent;
   cursor: pointer;
 }
 
-.text-button {
+.button-quiet {
   padding: 0.35rem 0;
   border-bottom: 1px solid var(--ink);
   font-size: 12px;
 }
 
-.text-button:hover {
+.button-quiet:hover {
   color: var(--red);
   border-color: var(--red);
 }
@@ -2818,9 +2869,16 @@ img {
   *::before,
   *::after {
     scroll-behavior: auto;
-    transition-duration: 0.01ms;
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
+    /* !important is load-bearing: specificity-0 loses to the
+       tw-animate-css utilities (dialog fade/zoom, skeleton pulse),
+       so without it this block is a no-op for exactly the motion
+       that remains in the app. */
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
+    animation-iteration-count: 1 !important;
   }
 
   .artwork-image img {
@@ -2904,7 +2962,7 @@ img {
     width: min(100% - 2rem, 1440px);
   }
 
-  .site-header {
+  :root {
     --header-h: 68px;
   }
 
@@ -3021,7 +3079,7 @@ img {
     gap: 1rem;
   }
 
-  .intro-strip .text-link {
+  .intro-strip .link-action {
     grid-column: auto;
   }
 
@@ -3078,6 +3136,10 @@ img {
     margin-top: 0;
   }
 
+  .path-card--3 {
+    max-width: none;
+  }
+
   .collection-note {
     grid-template-columns: 3rem minmax(0, 1fr);
     gap: 1rem;
@@ -3124,7 +3186,7 @@ img {
     margin-bottom: 0.25rem;
   }
 
-  .department-toggle-group {
+  .filter-group [data-slot="toggle-group"] {
     width: 100%;
     min-width: 0;
     flex-wrap: wrap;
@@ -3132,7 +3194,7 @@ img {
     overflow: visible;
   }
 
-  .department-toggle-group [data-slot="toggle-group-item"] {
+  .filter-group [data-slot="toggle-group-item"] {
     border-left-width: 1px;
   }
 
@@ -3161,7 +3223,7 @@ img {
   }
 
   .detail-loading__image {
-    min-height: 20rem;
+    min-height: var(--artwork-min-height, 20rem);
   }
 
   .detail-loading__copy {
@@ -3229,7 +3291,7 @@ img {
     gap: 0.5rem;
   }
 
-  .selection-tray__inner .text-link {
+  .selection-tray__inner .link-action {
     grid-column: 1;
   }
 
@@ -3534,4 +3596,22 @@ img {
   .detail-page__topline .cue-key {
     display: none;
   }
+}
+
+/* Tray thumb missing/broken state — mirrors artwork-image__missing in
+   miniature (needs-work 09-15 P3): a legal imageless save or a dead URL
+   must read as "no image", never as an empty loading slot. */
+.selection-tray__thumb-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--image-field);
+}
+
+.selection-tray__thumb-missing-mark {
+  color: var(--muted-foreground);
+  font-size: 0.625rem;
+  line-height: 1;
 }

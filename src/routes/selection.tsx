@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { curatedArtworks, featuredArtwork } from "@/data/curated-artworks";
+import { featuredArtwork } from "@/data/curated-artworks";
 import {
   artworkFromSelectionItem,
   type SelectionItem,
@@ -127,7 +127,7 @@ function Selection() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="text-button"
+                className="button-quiet"
                 onClick={() => {
                   if (typeof window !== "undefined") window.print();
                 }}
@@ -138,7 +138,11 @@ function Selection() {
               <AlertDialog>
                 <AlertDialogTrigger
                   render={
-                    <Button variant="ghost" size="sm" className="text-button" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="button-quiet"
+                    />
                   }
                 >
                   Clear selection
@@ -164,31 +168,20 @@ function Selection() {
           </div>
           <div className="selection-room">
             {items.map((item, index) => {
-              const artwork = curatedArtworks.find(
-                (candidate) => candidate.id === item.id,
-              );
               return (
                 <article className="selection-row" key={item.id}>
+                  {/* Decorative duplicate of the h2 title link: hidden from
+                      AT and the tab order. The h2 link remains the row's
+                      single announcer, still sourced from the same stored
+                      snapshot (needs-work 09-16 intent preserved). */}
                   <Link
                     to="/art/$objectId"
                     params={{ objectId: String(item.id) }}
                     className="selection-row__image"
-                    aria-label={
-                      artwork?.displayTitle ??
-                      item.displayTitle ??
-                      `Object ${item.id}`
-                    }
+                    aria-hidden="true"
+                    tabIndex={-1}
                   >
-                    {artwork ? (
-                      <ArtworkImage artwork={artwork} />
-                    ) : (
-                      // Offline/no-hydrated fallback: reconstruct from the
-                      // stored item so the small->large image fallback and
-                      // the honest missing panel still apply (glm-5-2
-                      // 09-10 14:57 #4 — a primaryImage-only save used to
-                      // render a blank slot).
-                      <ArtworkImage artwork={artworkFromSelectionItem(item)} />
-                    )}
+                    <ArtworkImage artwork={artworkFromSelectionItem(item)} />
                   </Link>
                   <div className="selection-row__meta">
                     <span className="selection-row__index mono">
@@ -271,7 +264,7 @@ function CopyListButton({ items }: { items: SelectionItem[] }) {
       type="button"
       variant="ghost"
       size="sm"
-      className="text-button"
+      className="button-quiet"
       onClick={handleCopy}
       aria-label="Copy saved works list to clipboard"
     >

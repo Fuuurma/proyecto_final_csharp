@@ -1,9 +1,20 @@
 import type { CSSProperties } from "react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Artwork } from "@/lib/met/normalize";
 
 type ArtworkImageProps = {
-  artwork: Artwork;
+  // The whole Artwork is not required — only the fields this component
+  // reads — so stored browse-sequence entries (a slim pick, review
+  // 09-19 P3) render without a fake full record.
+  artwork: Pick<
+    Artwork,
+    | "id"
+    | "displayTitle"
+    | "artist"
+    | "primaryImage"
+    | "primaryImageSmall"
+    | "imageAspectRatio"
+  >;
   size?: "small" | "large";
   layout?: "ratio" | "fill";
   eager?: boolean;
@@ -34,12 +45,12 @@ export function ArtworkImage({
     key: string;
     failedSources: string[];
   }>({ key: sourceKey, failedSources: [] });
-  const failedSources =
-    imageState.key === sourceKey ? imageState.failedSources : [];
-
-  const source = sources.find(
-    (candidate) => !failedSources.includes(candidate),
+  const failedSet = useMemo(
+    () => new Set(imageState.key === sourceKey ? imageState.failedSources : []),
+    [imageState, sourceKey],
   );
+
+  const source = sources.find((candidate) => !failedSet.has(candidate));
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
@@ -54,14 +65,13 @@ export function ArtworkImage({
     }
   }, [source, loadedSrc]);
 
-  const imageStyle: CSSProperties =
-    layout === "ratio"
-      ? { aspectRatio: artwork.imageAspectRatio }
-      : ({ "--artwork-ratio": artwork.imageAspectRatio } as CSSProperties);
+  const imageStyle = {
+    "--artwork-ratio": artwork.imageAspectRatio,
+  } as CSSProperties;
 
   return (
     <div
-      className={`artwork-image ${layout === "fill" ? "artwork-image--fill" : ""} ${loadedSrc === source ? "" : "is-loading"} ${className}`.trim()}
+      className={`artwork-image ${layout === "ratio" ? "aspect-(--artwork-ratio)" : ""} ${layout === "fill" ? "artwork-image--fill" : ""} ${loadedSrc === source ? "" : "is-loading"} ${className}`.trim()}
       style={imageStyle}
     >
       {source ? (
