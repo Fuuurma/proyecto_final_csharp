@@ -34,6 +34,7 @@ test-results/
 .mimocode/
 .pnpm-store/
 .dev.vars
+.dev.vars.e2e-bak
 
 # repowise index (machine-local codebase intelligence)
 .repowise/
