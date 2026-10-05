@@ -1990,6 +1990,26 @@ img {
   transform: translateY(0);
 }
 
+/* Touch has no hover and no visible focus ring before the first tap,
+   so the desktop cue above left the high-resolution view undiscoverable
+   on a phone: a plain picture, though tapping it did open. Show it
+   persistently there — sentence-case and larger, because 10px uppercase
+   mono is a desktop-hud register, and on a translucent plate so the
+   artwork still reads through it. The transform is pinned to its
+   resting offset so the rule adds no motion, and hover/focus above is
+   untouched. */
+@media (pointer: coarse) {
+  .detail-image-hint {
+    opacity: 1;
+    transform: translateY(0);
+    padding: 0.45rem 0.7rem;
+    background: color-mix(in srgb, var(--ink) 72%, transparent);
+    font-size: 12px;
+    letter-spacing: 0.01em;
+    text-transform: none;
+  }
+}
+
 .image-dialog-content {
   width: min(94vw, 1280px);
   max-height: 94vh;

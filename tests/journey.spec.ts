@@ -542,3 +542,176 @@ test("A saved work still has a local record when the live object is unavailable"
   ).toBeVisible();
   await expect(page.getByText("A remembered maker")).toBeVisible();
 });
+
+/**
+ * MTM-TOUCH-ZOOM-CUE-01: the high-resolution cue was `opacity: 0` and
+ * revealed only by `:hover` / `:focus-visible`. On a coarse pointer
+ * neither exists before the first tap, so a touch user saw a plain
+ * picture and had no way to know tapping it opened the full view.
+ *
+ * This is the behavioral half of the contract: a real browser with a
+ * coarse pointer emulated, asserting the cue is actually painted and
+ * legible BEFORE any interaction. A source pin cannot prove that, and
+ * the previous test suite had no coverage of this case at all.
+ */
+test.describe("inspect cue by pointer type", () => {
+  const cue = (page: Page) => page.locator(".detail-image-hint");
+
+  /**
+   * The dev server compiles /art/:id on demand, so the first navigation
+   * to a given object can answer ERR_EMPTY_RESPONSE while the route
+   * builds. playwright.config.ts documents retries as the intended
+   * absorber for that, but a cold-start failure inside a new test is
+   * indistinguishable from a real one, so these cases warm the route
+   * explicitly and only then assert. A test that passes on retry 2 is
+   * not evidence.
+   */
+  const gotoArtwork = async (page: Page, id = "436535") => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await page.goto(`/art/${id}`);
+        return;
+      } catch (error) {
+        const cold = /ERR_EMPTY_RESPONSE|ECONNREFUSED/.test(
+          (error as Error).message,
+        );
+        if (!cold || attempt >= 3) throw error;
+        await page.waitForTimeout(1000);
+      }
+    }
+  };
+
+  // No describe-level test.use({ hasTouch }): that would apply to the
+  // desktop hover test too, and a touch context has no hover to reveal
+  // the cue with. The touch cases build their own coarse-pointer
+  // context below; this one runs on the project's normal device.
+
+  test("a touch user sees the inspect cue without hovering or focusing", async ({
+    browser,
+  }) => {
+    // A fresh context so the emulation applies to this page only and
+    // cannot leak into the desktop project running in parallel.
+    const context = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 390, height: 844 },
+      deviceScaleFactor: 3,
+    });
+    const page = await context.newPage();
+    try {
+      await gotoArtwork(page);
+      const hint = cue(page);
+      await expect(hint).toBeVisible();
+
+      // Visible is not the same as painted: opacity: 0 elements report
+      // as visible to Playwright, so read the resolved value.
+      const opacity = await hint.evaluate((el) => getComputedStyle(el).opacity);
+      expect(
+        Number(opacity),
+        "the coarse-pointer cue is still transparent",
+      ).toBe(1);
+
+      // Legible at arm's length: the desktop register is 10px.
+      const fontSize = await hint.evaluate((el) =>
+        parseFloat(getComputedStyle(el).fontSize),
+      );
+      expect(fontSize).toBeGreaterThanOrEqual(12);
+
+      // The cue must not swallow the artwork — it is a plate over the
+      // image, so its backdrop has to stay translucent. Parse the
+      // computed color rather than the source: color-mix() resolves to
+      // `color(srgb r g b / a)`, which has no commas, so the obvious
+      // split-and-take-the-last regex yields NaN and fails a correct
+      // stylesheet. This handles both rgba() and color(srgb … / a).
+      const alpha = await hint.evaluate((el) => {
+        const raw = getComputedStyle(el).backgroundColor;
+        const slashed = raw.match(/\/\s*([\d.]+)\s*\)/);
+        if (slashed) return Number(slashed[1]);
+        const parts = raw.match(/[\d.]+/g);
+        return parts?.length === 4 ? Number(parts[3]) : 1;
+      });
+      expect(
+        alpha,
+        "the coarse cue's plate is opaque and hides the artwork",
+      ).toBeLessThan(1);
+
+      // And it must not be parked outside the image.
+      const offset = await hint.evaluate(
+        (el) => getComputedStyle(el).transform,
+      );
+      expect(
+        offset === "none" || offset.includes("matrix(1, 0, 0, 1, 0, 0)"),
+      ).toBe(true);
+
+      // The tap still works, and the cue is honest about what it does.
+      await page
+        .getByRole("button", { name: /Inspect .* in high resolution/ })
+        .tap();
+      await expect(page.getByRole("dialog")).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("desktop still reveals the cue on hover", async ({ page }) => {
+    // A real touch device (the `mobile` project is Pixel 7) has no
+    // hover, so asserting the hover enhancement there tests a pointer
+    // the device does not have — and would fail by design. This case
+    // is only meaningful on a fine pointer.
+    test.skip(
+      test.info().project.name === "mobile",
+      "no hover on the mobile device profile",
+    );
+    await gotoArtwork(page);
+    const hint = cue(page);
+    // At rest on a fine pointer the cue stays hidden — the archive
+    // stillness the desktop design chose.
+    await expect
+      .poll(async () =>
+        hint.evaluate((el) => Number(getComputedStyle(el).opacity)),
+      )
+      .toBe(0);
+
+    await page
+      .getByRole("button", { name: /Inspect .* in high resolution/ })
+      .hover();
+    await expect
+      .poll(async () =>
+        hint.evaluate((el) => Number(getComputedStyle(el).opacity)),
+      )
+      .toBe(1);
+  });
+
+  test("reduced motion keeps the cue static and visible on touch", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 390, height: 844 },
+      reducedMotion: "reduce",
+    });
+    const page = await context.newPage();
+    try {
+      await gotoArtwork(page);
+      const hint = cue(page);
+      await expect(hint).toBeVisible();
+      const styles = await hint.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return {
+          opacity: s.opacity,
+          transform: s.transform,
+          transition: s.transitionDuration,
+        };
+      });
+      expect(Number(styles.opacity)).toBe(1);
+      // The global reduce block drives transition-duration to 0.01ms,
+      // not 0 — a literal-zero assertion would fail a correct
+      // stylesheet. What matters is that the 180ms fade is gone.
+      expect(
+        parseFloat(styles.transition) || 0,
+        "the coarse cue still animates under reduced motion",
+      ).toBeLessThanOrEqual(0.01);
+    } finally {
+      await context.close();
+    }
+  });
+});
