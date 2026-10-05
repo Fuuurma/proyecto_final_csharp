@@ -35,7 +35,7 @@ export function SaveButton({ artwork, compact = false }: SaveButtonProps) {
       disabled={!isHydrated}
       aria-label={
         saved
-          ? `Remove ${artwork.displayTitle} from your selection`
+          ? `Saved — Remove ${artwork.displayTitle} from your selection`
           : `Save ${artwork.displayTitle} to your selection`
       }
       onClick={onClick}
