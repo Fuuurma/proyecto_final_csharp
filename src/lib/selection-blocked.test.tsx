@@ -17,6 +17,7 @@ import {
   selectionItemFromArtwork,
   useSelection,
 } from "./selection";
+import * as selectionStorage from "./selection-storage";
 
 const artwork: Artwork = {
   id: 42,
@@ -328,5 +329,33 @@ describe("persistenceBlocked disclosure", () => {
     expect(
       JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null").version,
     ).toBe(2);
+  });
+});
+
+/**
+ * The provider's working document is built once per mount, not per
+ * render (react-doctor rerender-lazy-ref-init): a useRef(factory())
+ * argument evaluates on every render and every result but the first
+ * is dropped. Post-hydration re-renders must not call the factory.
+ */
+describe("provider document initialization", () => {
+  it("does not rebuild the working document on re-renders", async () => {
+    const spy = vi.spyOn(selectionStorage, "emptySelectionDocument");
+    const utils = renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("blocked")).toHaveTextContent("none"),
+    );
+    const afterMount = spy.mock.calls.length;
+    utils.rerender(
+      <SelectionProvider>
+        <Probe />
+      </SelectionProvider>,
+    );
+    utils.rerender(
+      <SelectionProvider>
+        <Probe />
+      </SelectionProvider>,
+    );
+    expect(spy.mock.calls.length).toBe(afterMount);
   });
 });
