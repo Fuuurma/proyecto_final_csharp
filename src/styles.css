@@ -2117,16 +2117,31 @@ img {
   max-width: 100%;
   max-height: min(72vh, 840px);
   object-fit: contain;
-  transition:
-    max-width 200ms ease,
-    max-height 200ms ease;
 }
 
 .image-dialog-stage.is-zoomed .image-dialog-asset {
+  /* Width — not transform — grows the box, so the stage's overflow:auto
+     yields a real scroll extent: panning is native scroll, and tall
+     works stay reachable instead of clipping (grok 09-17 #219). The
+     keyframe eases the jump from the unzoomed size back to 1; the old
+     max-width/max-height transition declared 200ms but could never
+     interpolate to `none`, so it snapped (grok 09-14, 09-16). */
   max-width: none;
   max-height: none;
   width: 180%;
   height: auto;
+  transform-origin: top left;
+  animation: image-zoom-in 200ms ease;
+}
+
+@keyframes image-zoom-in {
+  from {
+    transform: scale(0.556);
+  }
+
+  to {
+    transform: scale(1);
+  }
 }
 
 .image-dialog-credit {
@@ -2375,8 +2390,12 @@ img {
 
 .artwork-views__item img {
   display: block;
-  width: 100%;
-  aspect-ratio: 1;
+  /* Uniform height, natural width — the thumbnail keeps the view's own
+     proportions instead of squaring every source (grok 09-17 #220,
+     10-05 #11). */
+  height: 3.5rem;
+  width: auto;
+  max-width: 7rem;
   object-fit: contain;
 }
 
