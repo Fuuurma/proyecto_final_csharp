@@ -150,12 +150,22 @@ function edgeCache(): Cache | undefined {
   return (storage as (CacheStorage & { default?: Cache }) | undefined)?.default;
 }
 
+// The edge tier caches our NORMALIZED payloads (Artwork, MetSearchIds,
+// MetDepartment[]), not upstream JSON — so a shape change across deploys
+// would otherwise read back through an unchecked cast for the full 7-day
+// TTL (fleet free-sweep 10-05). Entries carry a versioned envelope; a
+// version miss refetches fresh instead of serving a stale shape.
+const EDGE_SHAPE_VERSION = 1;
+
 export async function getEdgeCached<T>(key: string): Promise<T | undefined> {
   const cache = edgeCache();
   if (!cache) return undefined;
   try {
     const hit = await cache.match(key);
-    return hit ? ((await hit.json()) as T) : undefined;
+    if (!hit) return undefined;
+    const envelope = (await hit.json()) as { v?: number; data?: T };
+    if (envelope?.v !== EDGE_SHAPE_VERSION) return undefined;
+    return envelope.data;
   } catch {
     // Edge failures degrade to an upstream fetch, never a failed request.
     return undefined;
@@ -172,9 +182,10 @@ export async function setEdgeCached(
   try {
     // Cache-Control: max-age is what expires the entry — the Cache API
     // honours it on match, so no manual eviction is needed.
+    const envelope = JSON.stringify({ v: EDGE_SHAPE_VERSION, data: value });
     await cache.put(
       key,
-      new Response(JSON.stringify(value), {
+      new Response(envelope, {
         headers: {
           "Content-Type": "application/json",
           "Cache-Control": `public, max-age=${ttlSeconds}`,

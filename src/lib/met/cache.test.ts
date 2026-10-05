@@ -166,6 +166,30 @@ describe("Met API edge cache tier", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("misses entries written under a different shape version", async () => {
+    // The edge tier caches normalized payloads for up to 7 days — a
+    // shape change across deploys must read as a miss, not an
+    // unchecked cast into the new shape (fleet free-sweep 10-05).
+    const backing = new Map<string, string>();
+    vi.stubGlobal("caches", {
+      default: {
+        match: async (key: string) => {
+          const body = backing.get(key);
+          return body === undefined ? undefined : new Response(body);
+        },
+        put: async (key: string, res: Response) => {
+          backing.set(key, await res.text());
+        },
+      },
+    });
+
+    // A pre-envelope entry (bare value, no {v, data} wrapper).
+    backing.set("https://example.com/old", JSON.stringify({ id: 9 }));
+    await expect(
+      getEdgeCached("https://example.com/old"),
+    ).resolves.toBeUndefined();
+  });
+
   it("uses day-scale TTLs for immutable surfaces and minutes for search", () => {
     expect(EDGE_TTL_S.departments).toBeGreaterThanOrEqual(24 * 60 * 60);
     expect(EDGE_TTL_S.object).toBeGreaterThanOrEqual(24 * 60 * 60);
