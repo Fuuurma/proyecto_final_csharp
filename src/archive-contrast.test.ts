@@ -56,6 +56,10 @@ describe("archive token contrast", () => {
     // descendant — the token only reaches it when declared on :root.
     const rootBlock = ruleBlock(styles, /^:root\s*\{/m);
     expect(rootBlock).toContain("--header-h: 76px");
+    // A 68px duplicate appended to top-level :root would still pass the
+    // positive pin while winning the cascade at every viewport — assert
+    // its absence too (review 10-06 04:47 #1).
+    expect(rootBlock).not.toContain("68px");
 
     // The 68px override must stay inside the 760px media block — hoisted
     // to the top-level :root it would silently win at every viewport
@@ -63,6 +67,11 @@ describe("archive token contrast", () => {
     const mobileBlocks = styles.match(
       /^@media \(max-width: 760px\) \{[\s\S]*?^\}/gm,
     );
+    // The match silently comes back empty if the block stops closing at
+    // column 0 or the query string drifts — pin the blocks' existence so
+    // .some() fails scoped, not as a cryptic undefined (review 10-06
+    // 04:47 #2).
+    expect(mobileBlocks?.length ?? 0).toBeGreaterThanOrEqual(1);
     expect(
       mobileBlocks?.some((block) =>
         /:root\s*\{[^}]*--header-h:\s*68px/.test(block),

@@ -40,6 +40,27 @@ async function clickSave(page: Page, name: RegExp) {
   await button.click();
 }
 
+/**
+ * `.collection-index__intro` renders on both index surfaces (Home and
+ * Departments) — read its position and resolved `top` together with the
+ * live --header-h token and the root font size.
+ */
+async function introGeometry(page: Page) {
+  const intro = page.locator(".collection-index__intro");
+  await expect(intro).toBeVisible();
+  const geometry = await intro.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    const root = getComputedStyle(document.documentElement);
+    return {
+      position: computed.position,
+      top: computed.top,
+      headerH: root.getPropertyValue("--header-h").trim(),
+      rem: parseFloat(root.fontSize),
+    };
+  });
+  return { intro, geometry };
+}
+
 test("Home → Explore → detail → Save → Selection", async ({ page }) => {
   await page.goto("/");
   await expect(
@@ -277,54 +298,68 @@ test("Home department index opens a bounded department view", async ({
   await expect(page.locator(".explore-count")).toHaveText("6 / 6 review works");
 });
 
-test("Collection index intro keeps its sticky header offset", async ({
-  page,
-}) => {
+// The intro renders on both index surfaces — a departments-only sticky
+// regression must not pass the suite (review 10-06 04:47 #5).
+const introSurfaces = [
+  { path: "/", label: "Home" },
+  { path: "/departments", label: "Departments" },
+] as const;
+
+for (const { path, label } of introSurfaces) {
   // The intro is a sibling of .site-header — its sticky top only
   // resolves while --header-h lives on :root (review 10-05 11:17 #4).
-  await page.goto("/");
-  const intro = page.locator(".collection-index__intro");
-  await expect(intro).toBeVisible();
+  // The viewport is set in-test so each breakpoint behavior runs
+  // whichever --project filter is in play (review 10-06 04:47 #4).
+  test(`${label} collection index intro pins under the header at desktop width`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(path);
+    const { intro, geometry } = await introGeometry(page);
+    const expectedTop = parseFloat(geometry.headerH) + geometry.rem;
 
-  const geometry = await intro.evaluate((el) => {
-    const computed = getComputedStyle(el);
-    const root = getComputedStyle(document.documentElement);
-    return {
-      position: computed.position,
-      top: computed.top,
-      headerH: root.getPropertyValue("--header-h").trim(),
-      rem: parseFloat(root.fontSize),
-    };
+    expect(geometry.position).toBe("sticky");
+    expect(geometry.headerH).toBe("76px");
+    expect(geometry.top).toBe(`${expectedTop}px`);
+
+    // Scroll the index section's midpoint to the viewport center — safely
+    // inside the sticky range at both ends (scrolling to the page bottom
+    // would clamp the intro against the section's bottom edge instead).
+    const pinned = await intro.evaluate((el) => {
+      const section = el.closest(".collection-index");
+      if (!section) {
+        return null;
+      }
+      const rect = section.getBoundingClientRect();
+      const delta = rect.top + rect.height / 2 - window.innerHeight / 2;
+      window.scrollTo({ top: window.scrollY + delta, behavior: "instant" });
+      return el.getBoundingClientRect().top;
+    });
+    if (pinned === null) {
+      throw new Error(
+        "expected .collection-index__intro inside a .collection-index section",
+      );
+    }
+    // The scroll delta can be fractional and the browser may snap to a
+    // device pixel, so allow a half-pixel of error. toBeCloseTo's
+    // decimal precision excludes exactly 0.5 at precision 0 and tightens
+    // further at precision 1 — the opposite of the intent (review 10-06
+    // 04:47 #3).
+    expect(Math.abs(pinned - expectedTop)).toBeLessThanOrEqual(0.5);
   });
-  const expectedTop = parseFloat(geometry.headerH) + geometry.rem;
 
-  if ((page.viewportSize()?.width ?? 0) <= 760) {
+  test(`${label} collection index intro unpins at the mobile breakpoint`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 412, height: 915 });
+    await page.goto(path);
+    const { geometry } = await introGeometry(page);
     // The 760px media block deliberately unpins the intro; the token
     // still narrows the header it would clear.
     expect(geometry.position).toBe("static");
     expect(geometry.headerH).toBe("68px");
-    return;
-  }
-
-  expect(geometry.position).toBe("sticky");
-  expect(geometry.headerH).toBe("76px");
-  expect(geometry.top).toBe(`${expectedTop}px`);
-
-  // Scroll the index section's midpoint to the viewport center — safely
-  // inside the sticky range at both ends (scrolling to the page bottom
-  // would clamp the intro against the section's bottom edge instead).
-  const pinned = await intro.evaluate((el) => {
-    const section = el.closest(".collection-index");
-    if (!section) {
-      return null;
-    }
-    const rect = section.getBoundingClientRect();
-    const delta = rect.top + rect.height / 2 - window.innerHeight / 2;
-    window.scrollTo({ top: window.scrollY + delta, behavior: "instant" });
-    return el.getBoundingClientRect().top;
   });
-  expect(pinned).toBeCloseTo(expectedTop, 0);
-});
+}
 
 test("About keeps the source and working rules in view", async ({ page }) => {
   await page.goto("/about");
