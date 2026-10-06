@@ -282,7 +282,13 @@ export const searchCollection = createServerFn({ method: "GET" })
           mappedDepartmentId,
           undefined,
           page,
-          true,
+          // Outage substitute serves the WHOLE committed set: a paginated
+          // substitute truncated to SEARCH_PAGE_SIZE while `total` kept
+          // the full match count, and load-more is suppressed on a
+          // curated substitute — the counter promised works the view
+          // could never reach (needs-work 10-06 P1; ledger repro 10-05:
+          // "24 shown / 32 matched" at ?q=e).
+          false,
         );
         if (fallback.artworks.length > 0) {
           return {
@@ -399,7 +405,7 @@ export const searchCollection = createServerFn({ method: "GET" })
         mappedDepartmentId,
         undefined,
         page,
-        true,
+        false, // same whole-set substitute as the partial path above
       );
 
       // Substitution is page-1-only and only for failures that mean

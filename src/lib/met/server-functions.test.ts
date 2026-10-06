@@ -282,6 +282,23 @@ describe("searchCollection", () => {
     expect(result.message).toMatch(/answering slowly/);
   });
 
+  it("the outage substitute serves the whole curated match set, not a truncated page (needs-work 10-06 P1)", async () => {
+    // `?q=e` matches 32 curated works; the substitute paginated itself to
+    // SEARCH_PAGE_SIZE while `total` kept 32 and load-more was suppressed
+    // — the counter promised 8 works the view could never reach
+    // (ledger repro 10-05 P1: "24 shown / 32 matched"). The substitute
+    // must serve the whole committed set: total and rows agree.
+    setFixtureMode(false);
+    fetchMetSearchIds.mockRejectedValueOnce(new Error("upstream down"));
+
+    const result = await searchCollection({
+      data: { q: "e", department: "all", page: 1 },
+    });
+    expect(result.source).toBe("curated");
+    expect(result.total).toBeGreaterThan(24);
+    expect(result.artworks.length).toBe(result.total);
+  });
+
   it("page >= 2 hydration failure never substitutes curated rows into a live stream", async () => {
     // needs-work 09-26 #289 P1: committed rows appended under a live
     // query's later pages present review-set works as search results.
